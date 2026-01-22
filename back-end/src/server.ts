@@ -1,15 +1,13 @@
 import express from 'express';
+import { prisma } from '../lib/prisma.js';
 
 const app = express();
-
-app.get('/hello/:name', function(req, res) {
-  res.send('Hello, ' + req.params.name + '!');
-});
 app.use(express.json());
 
-app.post('/hello', function(req, res) {
-  res.send('Hello' + req.body.name + '!');
-})
+app.get("/", async (req, res) => {
+  const vendors = await prisma.vendorlist.findMany();
+  res.json(vendors)
+  })
 
 app.listen(8000, function() {
     console.log('Server is running on port 8000');
