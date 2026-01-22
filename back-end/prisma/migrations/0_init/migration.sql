@@ -1,3 +1,6 @@
+-- CreateExtension
+CREATE EXTENSION IF NOT EXISTS postgis;
+
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "vendors";
 
@@ -7,7 +10,7 @@ CREATE TABLE "vendors"."vendorlist" (
     "name" VARCHAR(100) NOT NULL,
     "latitude" DOUBLE PRECISION NOT NULL,
     "longitude" DOUBLE PRECISION NOT NULL,
-    "location" "geography",
+    "location" "geometry",
 
     CONSTRAINT "vendorlist_pkey" PRIMARY KEY ("id")
 );
