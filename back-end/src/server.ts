@@ -1,23 +1,16 @@
 import express from 'express';
-import { prisma } from '../lib/prisma.js';
-import cors from 'cors';
 
 const app = express();
-app.use(express.json());
-app.use(cors({
-  origin: 'http://localhost:5173'
-}));
 
-app.get("/api/vendors", async (req, res) => {
-  try {
-    const vendors = await prisma.vendorlist.findMany();
-    res.json(vendors);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch vendors" });
-  }
+app.get('/hello/:name', function(req, res) {
+  res.send('Hello, ' + req.params.name + '!');
 });
+app.use(express.json());
+
+app.post('/hello', function(req, res) {
+  res.send('Hello' + req.body.name + '!');
+})
 
 app.listen(8000, function() {
     console.log('Server is running on port 8000');
 });
-``
