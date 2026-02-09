@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./back-end
+      dockerfile: Dockerfile
+      target: development
+    container_name: vendormap-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./back-end:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    networks:
+      - vendormap-network
+
+  frontend:
+    build:
+      context: ./front-end
+      dockerfile: Dockerfile
+      target: development
+    container_name: vendormap-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./front-end:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    networks:
+      - vendormap-network
+
+networks:
+  vendormap-network:
+    driver: bridge
