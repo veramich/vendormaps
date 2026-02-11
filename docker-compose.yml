@@ -9,9 +9,14 @@ services:
       - "8000:8000"
     volumes:
       - ./back-end:/app
-      - /app/node_modules
+      - backend_node_modules:/app/node_modules
+    env_file:
+      - ./back-end/.env
     environment:
       - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=100
+    command: ["npm", "run", "dev"]
     networks:
       - vendormap-network
 
@@ -25,14 +30,21 @@ services:
       - "5173:5173"
     volumes:
       - ./front-end:/app
-      - /app/node_modules
+      - frontend_node_modules:/app/node_modules
     depends_on:
       - backend
     environment:
       - VITE_API_BASE_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=100
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     networks:
       - vendormap-network
 
 networks:
   vendormap-network:
     driver: bridge
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
