@@ -15,20 +15,9 @@ const app = express();
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('Hello, World!');
-});
-
-app.get('/api/businesses', (req, res) => {
-  const sample = [
-    { id: 1, name: 'Coffee Corner' },
-    { id: 2, name: 'Baker Street Bakery' }
-  ];
-  res.json(sample);
-});
 app.get('/', async (req, res) =>{
   try {
-    const result = await pool.query('SELECT name FROM vendormap.businesses LIMIT 1');
+    const result = await pool.query('SELECT name FROM vendormap.businesses LIMIT 5');
     res.send(result.rows[0].name);    
   } catch (err) {
     console.error(err);
