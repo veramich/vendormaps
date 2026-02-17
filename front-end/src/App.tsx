@@ -6,21 +6,23 @@ import AddBusiness from '../pages/AddBusiness';
 import BusinessPage from '../pages/BusinessPage';
 import UserProfile from '../pages/UserProfile';
 import Layout from './Layout';
+import NotFoundPage from '../pages/NotFoundPage';
 
 const routes = [{
   path: '/',
   element: <Layout />,
+  errorElement: <NotFoundPage />,
   children: [{
     path: '/',
     element: <HomePage />,
   },{
     path: '/businesses',
-    element: <BusinessesList />
+    element: <BusinessesList />,
   },{
     path: '/add-business',
     element: <AddBusiness />
   },{
-    path: '/business/:id',
+    path: '/businesses/:id',
     element: <BusinessPage /> 
   },{
     path: '/profile',
