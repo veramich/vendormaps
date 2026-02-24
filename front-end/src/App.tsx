@@ -8,7 +8,8 @@ import UserProfile from '../pages/UserProfile';
 import Layout from './Layout';
 import NotFoundPage from '../pages/NotFoundPage';
 import LoginPage from '../pages/LoginPage';
-import CreateAccountPage from '../pages/CreateAccountPage'; 
+import CreateAccountPage from '../pages/CreateAccountPage';
+import AdminReview from '../pages/AdminReview';
 
 const routes = [{
   path: '/',
@@ -35,6 +36,9 @@ const routes = [{
   },{
     path: '/create-account',
     element: <CreateAccountPage />
+  },{
+    path: '/admin/review',
+    element: <AdminReview />
   }]
 }]
 

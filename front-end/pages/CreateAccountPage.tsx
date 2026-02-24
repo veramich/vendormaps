@@ -10,6 +10,10 @@ export default function CreateAccountPage() {
     const navigate = useNavigate();
 
     async function createAccount() {
+        if (password !== confirmPassword) {
+            setError('Passwords do not match.');
+            return;
+        }
         try {
             await createUserWithEmailAndPassword(getAuth(), email, password);
             navigate('/');
@@ -22,8 +26,9 @@ export default function CreateAccountPage() {
         <>
             <h1>Create Account</h1>
             {error && <p>{error}</p>}
-            <input 
-                placeholder='Your email' 
+            <input
+                type='email'
+                placeholder='Your email'
                 value={email}
                 onChange={e => setEmail(e.target.value)}/>
             <input 

@@ -15,7 +15,7 @@ interface BusinessLocation {
     location_id: string;
     location_name: string | null;
     is_primary: boolean;
-    phone: string | null;
+    phones: string[] | null;
     local_email: string | null;
     cross_street_1: string;
     cross_street_2: string;
@@ -38,8 +38,8 @@ interface BusinessDetails {
     id: string;
     name: string;
     description: string | null;
-    website: string | null;
-    social_media: unknown;
+    websites: string[] | null;
+    email: string;
     logo_url: string | null;
     keywords: unknown;
     is_chain: boolean;
@@ -136,7 +136,7 @@ function formatBusinessHours(hours: unknown): string[] {
     return [String(hours)];
 }
 
-function parseSocialMedia(value: unknown): Record<string, string> {
+function parseEmail(value: unknown): Record<string, string> {
     if (!value) return {};
 
     if (typeof value === 'object' && !Array.isArray(value)) {
@@ -152,7 +152,7 @@ function parseSocialMedia(value: unknown): Record<string, string> {
     if (typeof value === 'string') {
         try {
             const parsed = JSON.parse(value);
-            return parseSocialMedia(parsed);
+            return parseEmail(parsed);
         } catch {
             return {};
         }
@@ -464,7 +464,7 @@ export default function BusinessPage() {
     }
 
     const keywords = useMemo(() => parseStringList(business?.keywords), [business?.keywords]);
-    const socialMedia = useMemo(() => parseSocialMedia(business?.social_media), [business?.social_media]);
+    const email = useMemo(() => parseEmail(business?.email), [business?.email]);
 
     if (loading) {
         return <main style={{ padding: '20px' }}>Loading business details...</main>;
@@ -508,12 +508,15 @@ export default function BusinessPage() {
             {business.parent_company && <p><strong>Parent company:</strong> {business.parent_company}</p>}
             {business.description && <p style={{ marginTop: '10px' }}>{business.description}</p>}
 
-            {business.website && (
+            {business.websites && business.websites.length > 0 && (
                 <p style={{ marginTop: '10px' }}>
-                    <strong>Website:</strong>{' '}
-                    <a href={business.website} target="_blank" rel="noreferrer">
-                        {business.website}
-                    </a>
+                    <strong>Website{business.websites.length > 1 ? 's' : ''}:</strong>{' '}
+                    {business.websites.map((url, i) => (
+                        <span key={i}>
+                            {i > 0 && ', '}
+                            <a href={url} target="_blank" rel="noreferrer">{url}</a>
+                        </span>
+                    ))}
                 </p>
             )}
 
@@ -523,19 +526,14 @@ export default function BusinessPage() {
                 </p>
             )}
 
-            {Object.keys(socialMedia).length > 0 && (
+            {Object.keys(email).length > 0 && (
                 <div style={{ marginTop: '10px' }}>
-                    <strong>Social media:</strong>
-                    <ul style={{ marginLeft: '20px' }}>
-                        {Object.entries(socialMedia).map(([platform, url]) => (
-                            <li key={platform}>
-                                {platform}:{' '}
-                                <a href={url} target="_blank" rel="noreferrer">
-                                    {url}
-                                </a>
-                            </li>
-                        ))}
-                    </ul>
+                    <strong>Email:</strong>
+                    {Object.entries(email).map(([key, value]) => (
+                        <div key={key} style={{ marginLeft: '10px' }}>
+                            {key}: <a href={`mailto:${value}`}>{value}</a>
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -566,7 +564,7 @@ export default function BusinessPage() {
                                     📍 {location.cross_street_1} & {location.cross_street_2}, {location.city}, {location.state} {location.zip_code}
                                 </p>
 
-                                {location.phone && <p>📞 {location.phone}</p>}
+                                {location.phones && location.phones.map((ph, i) => <p key={i}>📞 {ph}</p>)}
                                 {location.local_email && <p>✉️ {location.local_email}</p>}
                                 {location.temporarily_closed && (
                                     <p style={{ color: '#b91c1c' }}>
@@ -808,7 +806,7 @@ export default function BusinessPage() {
                                                 disabled={votingReviewId === review.id}
                                             >
                                                 {hasHelpfulSelected ? 'Helpful ✓' : 'Helpful'}
-                                            </button>x
+                                            </button>
                                             {isOwner && (
                                                 <button type="button" onClick={() => startEditingReview(review)}>
                                                     Edit review

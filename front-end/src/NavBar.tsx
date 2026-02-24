@@ -11,10 +11,9 @@ export default function NavBar() {
     return (
         <nav>
             <ul>
-                <li><Link to="/">Home</Link></li>
-                <li><Link to="/businesses">Businesses List</Link></li>
-                <li><Link to="/add-business">Add Business</Link></li>
-                <li><Link to="/profile">User Profile</Link></li>
+                <li><Link to="/">Map View</Link></li>
+                <li><Link to="/businesses">List View</Link></li>
+                <li><Link to="/profile">Profile</Link></li>
                 {isLoading ? <li>Loading...</li> : (
                     <>
                     {user && (

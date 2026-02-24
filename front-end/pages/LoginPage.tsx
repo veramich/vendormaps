@@ -21,8 +21,9 @@ export default function LoginPage() {
         <>
             <h1>Login</h1>
             {error && <p>{error}</p>}
-            <input 
-                placeholder='Your email' 
+            <input
+                type='email'
+                placeholder='Your email'
                 value={email}
                 onChange={e => setEmail(e.target.value)}
             />

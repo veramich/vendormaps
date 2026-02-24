@@ -1,7 +1,68 @@
-import { useMemo } from "react";
+//Commented Out Reverse Geocoding since it caused some bugs. Can revisit adding this back later with a more robust implementation if desired.
 import { useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useUser from "../src/useUser";
+
+function isWithinUSBoundaries(latitude: number, longitude: number): boolean {
+  // Alaska land boundaries (excluding surrounding ocean)
+  if (latitude >= 54.0 && latitude <= 71.5 && 
+      longitude >= -179.9 && longitude <= -129.0) {
+    // Exclude major bodies of water in Alaska region
+    if (latitude > 70.0 && longitude < -145.0) return false; // Arctic Ocean
+    if (latitude < 56.0 && longitude < -160.0) return false; // Bering Sea
+    return true;
+  }
+  
+  // Continental US land boundaries (more restrictive)
+  if (latitude >= 24.4 && latitude <= 49.0 && 
+      longitude >= -125.0 && longitude <= -66.9) {
+    
+    // Exclude Mexico border areas
+    if (latitude < 25.8 && longitude > -97.0) return false;
+    if (latitude < 31.0 && longitude > -106.0 && longitude < -93.0) return false;
+    if (latitude < 32.5 && longitude > -117.0 && longitude < -106.0) return false;
+    
+    // Exclude Atlantic Ocean (far east)
+    if (longitude > -70.0 && latitude < 42.0) return false;
+    
+    // Exclude Pacific Ocean (far west coastal areas)
+    if (longitude < -123.0 && latitude > 46.0) return false; // Washington coast
+    if (longitude < -120.0 && latitude < 34.0) return false; // Southern California coast
+    
+    // Exclude Gulf of Mexico
+    if (latitude < 26.0 && longitude > -97.0 && longitude < -80.0) return false;
+    
+    // Exclude Great Lakes (major water bodies)
+    if (latitude > 41.0 && latitude < 49.0 && longitude > -93.0 && longitude < -76.0) {
+      // Allow some land areas around Great Lakes but exclude the lakes themselves
+      if (latitude > 45.0 && longitude > -90.0 && longitude < -84.0) return false; // Superior
+      if (latitude > 44.0 && latitude < 47.0 && longitude > -88.0 && longitude < -84.0) return false; // Michigan
+    }
+    
+    return true;
+  }
+  
+  // Hawaii land boundaries (more restrictive than ocean)
+  if (latitude >= 18.9 && latitude <= 22.3 && 
+      longitude >= -160.5 && longitude <= -154.7) {
+    // Only allow the main Hawaiian islands, exclude surrounding ocean
+    return true;
+  }
+  
+  // Puerto Rico and US territories
+  if (latitude >= 17.9 && latitude <= 18.5 && 
+      longitude >= -67.3 && longitude <= -65.2) {
+    return true;
+  }
+  
+  // US Virgin Islands
+  if (latitude >= 17.6 && latitude <= 18.4 && 
+      longitude >= -65.1 && longitude <= -64.5) {
+    return true;
+  }
+  
+  return false;
+}
 
 interface Category {
   id: number;
@@ -44,23 +105,30 @@ interface Location {
   state: string;
   latitude: number | null;
   longitude: number | null;
-  phone: string;
+  original_latitude: number | null;
+  original_longitude: number | null;
+  location_snapped: boolean;
+  geocode_source: string | null;
+  snap_distance_meters: number | null;
+  phones: string[];
   location_privacy: "exact" | "intersection" | "grid";
   business_hours: BusinessHours;
+  images: File[];
+  image_count?: number;
 }
 
 interface BusinessFormData {
   name: string;
   category_id: string;
   description: string;
-  website: string;
+  websites: string[];
   email: string;
   keywords: string[];
   amenities: string[];
   is_chain: boolean;
   is_owner: boolean;
   locations: Location[];
-  images: File[];
+  logo: File | null;
 }
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -98,9 +166,15 @@ const DEFAULT_LOCATION = (): Location => ({
   state: "",
   latitude: null,
   longitude: null,
-  phone: "",
+  original_latitude: null,
+  original_longitude: null,
+  location_snapped: false,
+  geocode_source: null,
+  snap_distance_meters: null,
+  phones: [],
   location_privacy: "intersection",
   business_hours: DEFAULT_HOURS(),
+  images: [],
 });
 
 const US_STATES = [
@@ -108,33 +182,33 @@ const US_STATES = [
   "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV",
   "NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN",
   "TX","UT","VT","VA","WA","WV","WI","WY",
-];
+]; 
 
 const COMMON_AMENITIES = [
-  "Wheelchair Accessible", "DM To Order", "Text To Order", "Call To Order", "Order Online", "Walk-Up Orders",
-  "Credit Cards", "Tap To Pay", "Cash Only", "Apple Cash", "Zelle", "Venmo", "PayPal", "Google Pay", "Samsung Pay",
-  "Delivery", "Curbside Pickup", "Outdoor Seating", "Pet Friendly",
-  "Family Friendly", "Restrooms", "Live Music", "Catering", "Private Events", "Pop Ups",
-  "Street Parking", "Free Parking", "TV", "Live Sports", "Vegan Options", "Vegetarian Options", 
-  "Gluten-Free Options", "Halal Options", "Kosher Options", "Locally Sourced Ingredients", "Organic Options", "Late Night"
+  "Home Based", "Sidewalk Based", "Farmer's Market", "Pop Ups", "Catering", "Private Events", "Farmer's Market Only", "Pop Up Only", "Catering Only",
+  "DM To Order", "Text To Order", "Call To Order", "Order Online", "Walk-Up Orders", "Order Ahead", "Pre-Order Required", "No Walk-Ins", "Time-Slot Reservations",
+  "Cash Only", "Cash Preferred", "Tap To Pay", "Credit Cards", "Cash App", "Zelle", "Venmo", "PayPal", "Apple Cash", "Google Pay", "Samsung Pay",
+  "Pickup", "Curbside Pickup", "Delivery", "Shipping", "US Shipping", "International Shipping", "Street Parking", "Parking Lot", "Wheelchair Accessible", "Outdoor Seating", "Restrooms",
+  "Vegan Options", "Vegetarian Options", "Gluten-Free Options", "Halal Options", "Kosher Options", "Locally Sourced Ingredients", "Organic Options", "Late Night"
 ];
 
 export default function AddBusiness() {
   const [searchParams] = useSearchParams();
+  // const navigate = useNavigate();
   const { user, isLoading } = useUser();
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<BusinessFormData>({
     name: "",
     category_id: "",
     description: "",
-    website: "",
+    websites: [],
     email: "",
     keywords: [],
     amenities: [],
     is_chain: false,
     is_owner: false,
     locations: [DEFAULT_LOCATION()],
-    images: [],
+    logo: null,
   });
   const [keywordInput, setKeywordInput] = useState("");
   const [amenityInput, setAmenityInput] = useState("");
@@ -142,6 +216,35 @@ export default function AddBusiness() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geolocating, setGeolocating] = useState(false);
+  // const [geocodeLookupIndex, setGeocodeLookupIndex] = useState<number | null>(null);
+  // const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  // const geocodeTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  
+  // Restore form draft saved before navigating to the map to pick a location
+  useEffect(() => {
+    const draft = sessionStorage.getItem('addBusinessDraft');
+    if (draft) {
+      try {
+        setForm(JSON.parse(draft));
+      } catch {}
+      sessionStorage.removeItem('addBusinessDraft');
+    }
+  }, []);
+
+  useEffect(() => {
+    const lat = searchParams.get("lat");
+    const lng = searchParams.get("lng");
+
+    if (lat && lng) {
+      const parsedLat = Number(lat);
+      const parsedLng = Number(lng);
+
+      if (!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) &&
+          !isWithinUSBoundaries(parsedLat, parsedLng)) {
+        setError('The selected location is outside the United States. Please select a location within the US boundaries.');
+      }
+    }
+  }, [searchParams]);
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
@@ -241,27 +344,85 @@ export default function AddBusiness() {
     const parsedLng = Number(lng);
 
     if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) return null;
+    
+    // Validate that coordinates are within US boundaries
+    if (!isWithinUSBoundaries(parsedLat, parsedLng)) {
+      console.warn('Location coordinates are outside US boundaries:', parsedLat, parsedLng);
+      return null;
+    }
 
     return { lat: parsedLat, lng: parsedLng };
   }, [searchParams]);
 
+  // Require a map-selected location — redirect back to home if none present
+  // useEffect(() => {
+  //   if (!selectedLocation) {
+  //     navigate('/', { replace: true });
+  //   }
+  // }, []);
+
   useEffect(() => {
     if (selectedLocation && form.locations.length > 0 && !form.locations[0].latitude) {
       const autoFillAddress = async () => {
+        // Snap click to nearest intersection for privacy (map pins show intersection unless owner chooses exact)
+        let snappedLat = selectedLocation.lat;
+        let snappedLng = selectedLocation.lng;
+        let originalLat: number | null = null;
+        let originalLng: number | null = null;
+        let locationSnapped = false;
+        let geocodeSource: string | null = null;
+        let snapDistanceMeters: number | null = null;
+
+        try {
+          const snapRes = await fetch("/api/snap-to-intersection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              latitude: selectedLocation.lat,
+              longitude: selectedLocation.lng,
+            }),
+          });
+          if (snapRes.ok) {
+            const snapData = await snapRes.json();
+            snappedLat = snapData.latitude;
+            snappedLng = snapData.longitude;
+            originalLat = snapData.original_latitude;
+            originalLng = snapData.original_longitude;
+            locationSnapped = true;
+            geocodeSource = snapData.geocode_source || "map_snap";
+            snapDistanceMeters = snapData.snap_distance_meters ?? null;
+          }
+        } catch (_) {
+          // Fallback: use click as pin (no snap)
+          originalLat = selectedLocation.lat;
+          originalLng = selectedLocation.lng;
+        }
+
         updateLocation(0, {
           ...form.locations[0],
-          latitude: selectedLocation.lat,
-          longitude: selectedLocation.lng,
+          latitude: snappedLat,
+          longitude: snappedLng,
+          original_latitude: originalLat,
+          original_longitude: originalLng,
+          location_snapped: locationSnapped,
+          geocode_source: geocodeSource,
+          snap_distance_meters: snapDistanceMeters,
         });
 
-        const geocodeData = await reverseGeocode(selectedLocation.lat, selectedLocation.lng);
+        // Reverse geocode the snapped intersection to get cross street names (so label matches pin)
+        const geocodeData = await reverseGeocode(snappedLat, snappedLng);
         if (geocodeData) {
           const addressInfo = parseAddressData(geocodeData);
           if (addressInfo) {
             updateLocation(0, {
               ...form.locations[0],
-              latitude: selectedLocation.lat,
-              longitude: selectedLocation.lng,
+              latitude: snappedLat,
+              longitude: snappedLng,
+              original_latitude: originalLat,
+              original_longitude: originalLng,
+              location_snapped: locationSnapped,
+              geocode_source: geocodeSource,
+              snap_distance_meters: snapDistanceMeters,
               cross_street_1: addressInfo.cross_street_1 || form.locations[0].cross_street_1,
               cross_street_2: addressInfo.cross_street_2 || form.locations[0].cross_street_2,
               city: addressInfo.city || form.locations[0].city,
@@ -299,15 +460,35 @@ export default function AddBusiness() {
     setForm({ ...form, amenities: form.amenities.filter((a) => a !== amenity) });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newImages = Array.from(e.target.files).slice(0, 3 - form.images.length);
-      setForm({ ...form, images: [...form.images, ...newImages] });
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setForm({ ...form, logo: e.target.files[0] });
     }
   };
 
-  const removeImage = (index: number) => {
-    setForm({ ...form, images: form.images.filter((_, i) => i !== index) });
+  const removeLogo = () => {
+    setForm({ ...form, logo: null });
+  };
+
+  const handleLocationImageUpload = (locationIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newImages = Array.from(e.target.files).slice(0, 3);
+      const updatedLocations = form.locations.map((location, index) => 
+        index === locationIndex 
+          ? { ...location, images: [...location.images, ...newImages].slice(0, 3) }
+          : location
+      );
+      setForm({ ...form, locations: updatedLocations });
+    }
+  };
+
+  const removeLocationImage = (locationIndex: number, imageIndex: number) => {
+    const updatedLocations = form.locations.map((location, index) => 
+      index === locationIndex 
+        ? { ...location, images: location.images.filter((_, i) => i !== imageIndex) }
+        : location
+    );
+    setForm({ ...form, locations: updatedLocations });
   };
 
   const addLocation = () => {
@@ -369,27 +550,79 @@ export default function AddBusiness() {
     }
   };
 
-  const findAddressFromCoordinates = async (locationIndex: number) => {
-    const location = form.locations[locationIndex];
-    if (!location.latitude || !location.longitude) {
-      setError("No coordinates available for this location. Please select a location on the map first.");
-      return;
-    }
+  // const lookupCoordinatesFromAddress = async (locationIndex: number) => {
+  //   const location = form.locations[locationIndex];
+  //   if (!location.cross_street_1?.trim() || !location.cross_street_2?.trim() || !location.city?.trim() || !location.state) {
+  //     setGeocodeError("Please fill in both cross streets, city, and state first.");
+  //     return;
+  //   }
+  //   setGeocodeError(null);
+  //   setGeocodeLookupIndex(locationIndex);
+  //   try {
+  //     const params = new URLSearchParams({
+  //       cross_street_1: location.cross_street_1.trim(),
+  //       cross_street_2: location.cross_street_2.trim(),
+  //       city: location.city.trim(),
+  //       state: location.state,
+  //     });
+  //     const response = await fetch(`/api/geocode?${params}`);
+  //     if (!response.ok) {
+  //       const data = await response.json().catch(() => ({}));
+  //       throw new Error(data.error || "Could not find coordinates for this address.");
+  //     }
+  //     const data = await response.json();
+  //     updateLocation(locationIndex, {
+  //       ...location,
+  //       latitude: data.latitude,
+  //       longitude: data.longitude,
+  //     });
+  //   } catch (err: any) {
+  //     setGeocodeError(err.message || "Lookup failed.");
+  //   } finally {
+  //     setGeocodeLookupIndex(null);
+  //   }
+  // };
 
-    const geocodeData = await reverseGeocode(location.latitude, location.longitude);
-    if (geocodeData) {
-      const addressInfo = parseAddressData(geocodeData);
-      if (addressInfo) {
-        updateLocation(locationIndex, {
-          ...location,
-          cross_street_1: addressInfo.cross_street_1 || location.cross_street_1,
-          cross_street_2: addressInfo.cross_street_2 || location.cross_street_2,
-          city: addressInfo.city || location.city,
-          state: addressInfo.state || location.state,
-        });
-      }
-    }
-  };
+  // const scheduleAutoGeocode = (locationIndex: number, loc: Location) => {
+  //   if (geocodeTimers.current[locationIndex]) {
+  //     clearTimeout(geocodeTimers.current[locationIndex]);
+  //   }
+  //   // Don't overwrite coordinates that were set from the map
+  //   if (loc.latitude && loc.longitude) return;
+  //   if (!loc.cross_street_1?.trim() || !loc.cross_street_2?.trim() || !loc.city?.trim() || !loc.state) {
+  //     return;
+  //   }
+  //   setGeocodeError(null);
+  //   geocodeTimers.current[locationIndex] = setTimeout(async () => {
+  //     setGeocodeLookupIndex(locationIndex);
+  //     try {
+  //       const params = new URLSearchParams({
+  //         cross_street_1: loc.cross_street_1.trim(),
+  //         cross_street_2: loc.cross_street_2.trim(),
+  //         city: loc.city.trim(),
+  //         state: loc.state,
+  //       });
+  //       const response = await fetch(`/api/geocode?${params}`);
+  //       if (!response.ok) {
+  //         const data = await response.json().catch(() => ({}));
+  //         setGeocodeError(data.error || "Could not find coordinates for this address.");
+  //         return;
+  //       }
+  //       const data = await response.json();
+  //       setForm(prev => {
+  //         const locations = [...prev.locations];
+  //         locations[locationIndex] = { ...locations[locationIndex], latitude: data.latitude, longitude: data.longitude };
+  //         return { ...prev, locations };
+  //       });
+  //     } catch (err: any) {
+  //       setGeocodeError(err.message || "Lookup failed.");
+  //     } finally {
+  //       setGeocodeLookupIndex(null);
+  //       delete geocodeTimers.current[locationIndex];
+  //     }
+  //   }, 800);
+  // };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -404,19 +637,35 @@ export default function AddBusiness() {
       const token = await user.getIdToken();
 
       const formData = new FormData();
-      formData.append('business', JSON.stringify({
+      
+      // Prepare business data with image counts for each location
+      const businessDataWithCounts = {
         ...form,
-        images: undefined, 
-      }));
+        logo: undefined, // Remove logo from JSON
+        locations: form.locations.map(location => ({
+          ...location,
+          images: undefined, // Remove images from JSON  
+          image_count: location.images.length
+        }))
+      };
+      
+      formData.append('business', JSON.stringify(businessDataWithCounts));
 
-      form.images.forEach((image, index) => {
-        formData.append(`image${index}`, image);
+      if (form.logo) {
+        formData.append('logo', form.logo);
+      }
+
+      form.locations.forEach(location => {
+        location.images.forEach(image => {
+          formData.append('location_images', image);
+        });
       });
 
       const response = await fetch("/api/businesses", {
         method: "POST",
         headers: {
           'authtoken': token,
+          'Authorization': `Bearer ${token}`,
         },
         body: formData,
       });
@@ -448,7 +697,9 @@ export default function AddBusiness() {
             The actual owner can claim this business later once it's approved.
           </p>
         )}
-        <button onClick={() => window.location.reload()}>Add Another Business</button>
+        <p>
+          <button onClick={() => window.location.reload()}>Add Another Business</button>
+        </p>
       </div>
     );
   }
@@ -470,21 +721,11 @@ export default function AddBusiness() {
     <div>
       <h1>Add a Business</h1>
       <p>
-        Submit a business to be added to the map. All submissions are reviewed before 
-        being published. Business must be located in the United States.
+        Add a business here! All submissions are reviewed before 
+        being published. Please note that businesses must be located in the United States.
       </p>
       
-      <p>
-        <strong>Tip:</strong> If you clicked a location on the map, we'll automatically 
-        find the cross streets and city for you!
-      </p>
-
-      {selectedLocation && (
-        <div>
-          <strong>Selected map location:</strong> {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
-          {geolocating && <span> (Looking up address...)</span>}
-        </div>
-      )}
+      {geolocating && <p><em>Looking up address from map location…</em></p>}
 
       {error && (
         <div>
@@ -534,15 +775,45 @@ export default function AddBusiness() {
             />
           </label>
 
-          <label>
-            Website
-            <input
-              type="url"
-              value={form.website}
-              onChange={(e) => setForm({ ...form, website: e.target.value })}
-              placeholder="https://example.com"
-            />
-          </label>
+          <div>
+            <strong>Websites</strong>
+            {form.websites.map((url, i) => (
+              <div key={i}>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => {
+                    const updated = [...form.websites];
+                    updated[i] = e.target.value;
+                    setForm({ ...form, websites: updated });
+                  }}
+                  onBlur={(e) => {
+                    const val = e.target.value.trim();
+                    if (val && !/^https?:\/\//i.test(val)) {
+                      const updated = [...form.websites];
+                      updated[i] = `https://${val}`;
+                      setForm({ ...form, websites: updated });
+                    }
+                  }}
+                  pattern="https?://[^\s]+\.[a-zA-Z]{2,}(/[^\s]*)?"
+                  title="URL must include a valid suffix (e.g. .com, .co, .org)"
+                  placeholder="https://example.com"
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, websites: form.websites.filter((_, j) => j !== i) })}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, websites: [...form.websites, ""] })}
+            >
+              Add Website
+            </button>
+          </div>
 
           <label>
             Email
@@ -582,6 +853,28 @@ export default function AddBusiness() {
             />
             This business has multiple locations
           </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Business Logo</legend>
+          
+          {!form.logo && (
+            <label>
+              Upload business logo
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+              />
+            </label>
+          )}
+
+          {form.logo && (
+            <div>
+              <span>{form.logo.name}</span>
+              <button type="button" onClick={removeLogo}>Remove</button>
+            </div>
+          )}
         </fieldset>
 
         <fieldset>
@@ -638,56 +931,37 @@ export default function AddBusiness() {
 
           <div>
             <strong>Common amenities:</strong>
-            <h6>Select all that apply. The more you select, the higher chance of attracting customers.</h6>
+            <p><small>Select all that apply. The more you select, the higher chance of attracting customers.</small></p>
             <div>
-              {COMMON_AMENITIES.filter(amenity => !form.amenities.includes(amenity)).map((amenity) => (
-                <button 
-                  key={amenity} 
-                  type="button" 
-                  onClick={() => addAmenity(amenity)}
-                  disabled={form.amenities.length >= 20}
-                >
-                  + {amenity}
-                </button>
+              {COMMON_AMENITIES.map((amenity) => (
+                <label key={amenity} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginRight: '1rem', marginBottom: '0.4rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.amenities.includes(amenity)}
+                    onChange={(e) => {
+                      if (e.target.checked) addAmenity(amenity);
+                      else removeAmenity(amenity);
+                    }}
+                    disabled={!form.amenities.includes(amenity) && form.amenities.length >= 20}
+                  />
+                  {amenity}
+                </label>
               ))}
             </div>
           </div>
 
-          <div>
-            <strong>Selected amenities:</strong>
+          {form.amenities.filter(a => !COMMON_AMENITIES.includes(a)).length > 0 && (
             <div>
-              {form.amenities.map((amenity) => (
-                <span key={amenity}>
-                  {amenity} <button type="button" onClick={() => removeAmenity(amenity)}>×</button>
-                </span>
-              ))}
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend>Images (up to 3)</legend>
-          
-          {form.images.length < 3 && (
-            <label>
-              Upload images
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={handleImageUpload}
-              />
-            </label>
-          )}
-
-          <div>
-            {form.images.map((image, index) => (
-              <div key={index}>
-                <span>{image.name}</span>
-                <button type="button" onClick={() => removeImage(index)}>Remove</button>
+              <strong>Custom amenities:</strong>
+              <div>
+                {form.amenities.filter(a => !COMMON_AMENITIES.includes(a)).map((amenity) => (
+                  <span key={amenity}>
+                    {amenity} <button type="button" onClick={() => removeAmenity(amenity)}>×</button>
+                  </span>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </fieldset>
 
         <fieldset>
@@ -704,7 +978,7 @@ export default function AddBusiness() {
               )}
 
               <label>
-                Location Name (optional)
+                Location Name (If multiple locations)
                 <input
                   type="text"
                   value={loc.location_name}
@@ -715,29 +989,53 @@ export default function AddBusiness() {
 
               {loc.latitude && loc.longitude && (
                 <div>
+                  <div>
                   <strong>Coordinates:</strong> {loc.latitude.toFixed(6)}, {loc.longitude.toFixed(6)}
-                  <button 
-                    type="button" 
-                    onClick={() => findAddressFromCoordinates(locationIndex)}
-                    disabled={geolocating}
-                  >
-                    {geolocating ? 'Looking up address...' : 'Find cross streets & city'}
-                  </button>
+                  </div>
+                  <div>
+                    <strong>We aren't the best at finding the cross streets 😅. Please double-check the street names.
+                    Don't worry, it won't change the location on the map! </strong>
+                  </div>
                 </div>
               )}
 
-              {!loc.latitude && !loc.longitude && (
+              {/* {!loc.latitude && !loc.longitude && (
                 <div>
-                  <em>No coordinates available. Click a location on the map to auto-fill address details.</em>
+                  {geocodeLookupIndex === locationIndex
+                    ? <em>Looking up coordinates…</em>
+                    : (
+                      <>
+                        <em>No coordinates yet. Fill in the address below and coordinates will be looked up automatically.</em>
+                        {" "}
+                      </>
+                    )
+                  }
+                  {geocodeError && geocodeLookupIndex === null && (
+                    <>
+                      <span style={{ color: "red", marginLeft: "8px" }}>{geocodeError}</span>
+                      {" "}
+                      <button
+                        type="button"
+                        onClick={() => lookupCoordinatesFromAddress(locationIndex)}
+                        disabled={geocodeLookupIndex !== null || !loc.cross_street_1?.trim() || !loc.cross_street_2?.trim() || !loc.city?.trim() || !loc.state}
+                      >
+                        Retry
+                      </button>
+                    </>
+                  )}
                 </div>
-              )}
+              )} */}
 
               <label>
                 Cross Street 1 *
                 <input
                   type="text"
                   value={loc.cross_street_1}
-                  onChange={(e) => updateLocation(locationIndex, { ...loc, cross_street_1: e.target.value })}
+                  onChange={(e) => {
+                    const updated = { ...loc, cross_street_1: e.target.value };
+                    updateLocation(locationIndex, updated);
+                    // scheduleAutoGeocode(locationIndex, updated);
+                  }}
                   required
                   placeholder="e.g. Main St"
                 />
@@ -748,7 +1046,11 @@ export default function AddBusiness() {
                 <input
                   type="text"
                   value={loc.cross_street_2}
-                  onChange={(e) => updateLocation(locationIndex, { ...loc, cross_street_2: e.target.value })}
+                  onChange={(e) => {
+                    const updated = { ...loc, cross_street_2: e.target.value };
+                    updateLocation(locationIndex, updated);
+                    // scheduleAutoGeocode(locationIndex, updated);
+                  }}
                   required
                   placeholder="e.g. First Ave"
                 />
@@ -759,7 +1061,11 @@ export default function AddBusiness() {
                 <input
                   type="text"
                   value={loc.city}
-                  onChange={(e) => updateLocation(locationIndex, { ...loc, city: e.target.value })}
+                  onChange={(e) => {
+                    const updated = { ...loc, city: e.target.value };
+                    updateLocation(locationIndex, updated);
+                    // scheduleAutoGeocode(locationIndex, updated);
+                  }}
                   required
                   placeholder="e.g. Los Angeles"
                 />
@@ -769,7 +1075,11 @@ export default function AddBusiness() {
                 State *
                 <select
                   value={loc.state}
-                  onChange={(e) => updateLocation(locationIndex, { ...loc, state: e.target.value })}
+                  onChange={(e) => {
+                    const updated = { ...loc, state: e.target.value };
+                    updateLocation(locationIndex, updated);
+                    // scheduleAutoGeocode(locationIndex, updated);
+                  }}
                   required
                 >
                   <option value="">Select state</option>
@@ -777,24 +1087,47 @@ export default function AddBusiness() {
                 </select>
               </label>
 
-              <label>
-                Phone
-                <input
-                  type="tel"
-                  value={loc.phone}
-                  onChange={(e) => updateLocation(locationIndex, { ...loc, phone: e.target.value })}
-                  placeholder="(555) 123-4567"
-                />
-              </label>
-
+              <div>
+                <strong>Phone Numbers</strong>
+                {loc.phones.map((phone, phoneIndex) => (
+                  <div key={phoneIndex}>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => {
+                        const updated = [...loc.phones];
+                        updated[phoneIndex] = e.target.value.replace(/\D/g, '');
+                        updateLocation(locationIndex, { ...loc, phones: updated });
+                      }}
+                      pattern="\d{10}"
+                      maxLength={10}
+                      title="Enter a 10-digit phone number (digits only)"
+                      placeholder="5551234567"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => updateLocation(locationIndex, { ...loc, phones: loc.phones.filter((_, j) => j !== phoneIndex) })}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => updateLocation(locationIndex, { ...loc, phones: [...loc.phones, ""] })}
+                >
+                  Add Phone Number
+                </button>
+              </div>
+ 
               <label>
                 Location Privacy
                 <select
                   value={loc.location_privacy}
                   onChange={(e) => updateLocation(locationIndex, { ...loc, location_privacy: e.target.value as any })}
                 >
-                  <option value="exact">Show exact location</option>
-                  <option value="intersection">Show nearest intersection (recommended)</option>
+                  <option value="intersection">Show nearest intersection (recommended for privacy)</option>
+                  <option value="exact">Show exact location (where you clicked)</option>
                   <option value="grid">Show general area only</option>
                 </select>
               </label>
@@ -901,6 +1234,36 @@ export default function AddBusiness() {
                   </div>
                 )}
               </fieldset>
+
+              <fieldset>
+                <legend>Location Images (up to 3)</legend>
+                
+                {loc.images.length < 3 && (
+                  <label>
+                    Upload images for this location
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => handleLocationImageUpload(locationIndex, e)}
+                    />
+                  </label>
+                )}
+
+                <div>
+                  {loc.images.map((image, imageIndex) => (
+                    <div key={imageIndex}>
+                      <span>{image.name}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => removeLocationImage(locationIndex, imageIndex)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
             </div>
           ))}
 
@@ -918,4 +1281,3 @@ export default function AddBusiness() {
     </div>
   );
 }
-

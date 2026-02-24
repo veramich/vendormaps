@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
-import { useNavigate, Link } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import L from 'leaflet';
 import "leaflet/dist/leaflet.css";
 
@@ -43,13 +43,16 @@ interface BusinessLocation {
   location_id: string;
   latitude: number;
   longitude: number;
+  original_latitude?: number | null;
+  original_longitude?: number | null;
+  location_privacy?: string;
   location_name: string | null;
   cross_street_1: string;
   cross_street_2: string;
   city: string;
   state: string;
   zip_code: number;
-  phone: string | null;
+  phones: string[] | null;
   business_id: string;
   business_name: string;
   category_name: string;
@@ -79,6 +82,14 @@ function MapClickHandler({
   return null;
 }
 
+function MapViewController({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo([lat, lng], 17);
+  }, [lat, lng]);
+  return null;
+}
+
 
 export default function HomePage({
   defaultCenter = [33.978371, -118.225212],
@@ -88,12 +99,18 @@ export default function HomePage({
   defaultZoom?: number;
 }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [locations, setLocations] = useState<BusinessLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAddMode, setIsAddMode] = useState(false);
+  const [isAddMode, setIsAddMode] = useState(searchParams.get('addMode') === '1');
   const [pendingLocation, setPendingLocation] = useState<PendingLocation | null>(null);
   const pendingMarkerRef = useRef<L.Marker | null>(null);
+
+  const viewLat = searchParams.get('viewLat');
+  const viewLng = searchParams.get('viewLng');
+  const viewLocation = viewLat && viewLng ? { lat: Number(viewLat), lng: Number(viewLng) } : null;
+  const isSelectMode = searchParams.get('addMode') === '1';
 
   useEffect(() => {
   fetch("/api/locations")
@@ -159,10 +176,13 @@ export default function HomePage({
           ) : (
             <>
               <p>
-                Click on the map to place a temporary marker.
+                {isSelectMode
+                  ? "Click on the map to confirm a location, then return to the form."
+                  : "Click on the map to place a temporary marker."
+                }
               </p>
-              <button type="button" onClick={stopAddMode}>
-                Exit add mode
+              <button type="button" onClick={isSelectMode ? () => navigate('/add-business') : stopAddMode}>
+                {isSelectMode ? "Cancel — return to form" : "Exit add mode"}
               </button>
             </>
           )}
@@ -172,15 +192,50 @@ export default function HomePage({
           style={{ height: "100%", width: "100%" }}
           scrollWheelZoom={true}>
             <MapClickHandler enabled={isAddMode} onSelect={handleMapPick} />
+            {viewLocation && (
+              <>
+                <MapViewController lat={viewLocation.lat} lng={viewLocation.lng} />
+                <Marker position={[viewLocation.lat, viewLocation.lng]}>
+                  <Popup>
+                    <div style={{ minWidth: "210px" }}>
+                      <h3 style={{ marginBottom: "8px" }}>Confirm this location?</h3>
+                      <p style={{ marginBottom: "8px", fontSize: "14px" }}>
+                        Lat: {viewLocation.lat.toFixed(6)}<br />
+                        Lng: {viewLocation.lng.toFixed(6)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const params = new URLSearchParams({
+                            lat: viewLocation.lat.toFixed(6),
+                            lng: viewLocation.lng.toFixed(6),
+                          });
+                          navigate(`/add-business?${params.toString()}`);
+                        }}
+                      >
+                        Confirm location
+                      </button>
+                    </div>
+                  </Popup>
+                </Marker>
+              </>
+            )}
             <TileLayer                
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 url='https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
                 subdomains = 'abcd'
             />                     
-            {locations.map((loc) => (
+            {locations.map((loc) => {
+              const showExact =
+                loc.location_privacy === "exact" &&
+                loc.original_latitude != null &&
+                loc.original_longitude != null;
+              const pinLat = showExact ? loc.original_latitude! : loc.latitude;
+              const pinLng = showExact ? loc.original_longitude! : loc.longitude;
+              return (
                 <Marker
                 key={loc.location_id}
-                position={[loc.latitude, loc.longitude]}
+                position={[pinLat, pinLng]}
                 icon={createCustomIcon(loc.category_color, loc.category_icon)}
                 >
                 <Popup>
@@ -191,12 +246,12 @@ export default function HomePage({
                       📍 {loc.cross_street_1} & {loc.cross_street_2}<br />
                       {loc.city}, {loc.state}, {loc.zip_code}
                     </p>
-                    <p> 📞 {loc.phone}</p>
                     <Link to={`/locations/${loc.location_id}`}>View Details →</Link>
                     </div>
                 </Popup>
-                </Marker>
-            ))}
+              </Marker>
+              );
+            })}
 
             {pendingLocation && (
               <Marker
@@ -205,20 +260,13 @@ export default function HomePage({
               >
                 <Popup>
                   <div style={{ minWidth: "210px" }}>
-                    <h3 style={{ marginBottom: "8px" }}>Add business here?</h3>
-                    <p style={{ marginBottom: "8px", fontSize: "14px" }}>
-                      Lat: {pendingLocation.lat.toFixed(6)}<br />
-                      Lng: {pendingLocation.lng.toFixed(6)}
-                    </p>
+                    <h3 style={{ marginBottom: "8px" }}>
+                      {isSelectMode ? "Confirm this location?" : "Add business here?"}
+                    </h3>
+
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button type="button" onClick={handleConfirmAddBusiness}>
-                        Add business here
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPendingLocation(null)}
-                      >
-                        Cancel
+                        {isSelectMode ? "Confirm location" : "Add business here"}
                       </button>
                     </div>
                   </div>
