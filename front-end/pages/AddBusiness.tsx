@@ -1,68 +1,7 @@
 //Commented Out Reverse Geocoding since it caused some bugs. Can revisit adding this back later with a more robust implementation if desired.
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import useUser from "../src/useUser";
-
-function isWithinUSBoundaries(latitude: number, longitude: number): boolean {
-  // Alaska land boundaries (excluding surrounding ocean)
-  if (latitude >= 54.0 && latitude <= 71.5 && 
-      longitude >= -179.9 && longitude <= -129.0) {
-    // Exclude major bodies of water in Alaska region
-    if (latitude > 70.0 && longitude < -145.0) return false; // Arctic Ocean
-    if (latitude < 56.0 && longitude < -160.0) return false; // Bering Sea
-    return true;
-  }
-  
-  // Continental US land boundaries (more restrictive)
-  if (latitude >= 24.4 && latitude <= 49.0 && 
-      longitude >= -125.0 && longitude <= -66.9) {
-    
-    // Exclude Mexico border areas
-    if (latitude < 25.8 && longitude > -97.0) return false;
-    if (latitude < 31.0 && longitude > -106.0 && longitude < -93.0) return false;
-    if (latitude < 32.5 && longitude > -117.0 && longitude < -106.0) return false;
-    
-    // Exclude Atlantic Ocean (far east)
-    if (longitude > -70.0 && latitude < 42.0) return false;
-    
-    // Exclude Pacific Ocean (far west coastal areas)
-    if (longitude < -123.0 && latitude > 46.0) return false; // Washington coast
-    if (longitude < -120.0 && latitude < 34.0) return false; // Southern California coast
-    
-    // Exclude Gulf of Mexico
-    if (latitude < 26.0 && longitude > -97.0 && longitude < -80.0) return false;
-    
-    // Exclude Great Lakes (major water bodies)
-    if (latitude > 41.0 && latitude < 49.0 && longitude > -93.0 && longitude < -76.0) {
-      // Allow some land areas around Great Lakes but exclude the lakes themselves
-      if (latitude > 45.0 && longitude > -90.0 && longitude < -84.0) return false; // Superior
-      if (latitude > 44.0 && latitude < 47.0 && longitude > -88.0 && longitude < -84.0) return false; // Michigan
-    }
-    
-    return true;
-  }
-  
-  // Hawaii land boundaries (more restrictive than ocean)
-  if (latitude >= 18.9 && latitude <= 22.3 && 
-      longitude >= -160.5 && longitude <= -154.7) {
-    // Only allow the main Hawaiian islands, exclude surrounding ocean
-    return true;
-  }
-  
-  // Puerto Rico and US territories
-  if (latitude >= 17.9 && latitude <= 18.5 && 
-      longitude >= -67.3 && longitude <= -65.2) {
-    return true;
-  }
-  
-  // US Virgin Islands
-  if (latitude >= 17.6 && latitude <= 18.4 && 
-      longitude >= -65.1 && longitude <= -64.5) {
-    return true;
-  }
-  
-  return false;
-}
 
 interface Category {
   id: number;
@@ -85,16 +24,8 @@ interface DayHours {
   periods: HourPeriod[];
 }
 
-interface BusinessHours {
-  always_open: boolean;
-  monday: DayHours;
-  tuesday: DayHours;
-  wednesday: DayHours;
-  thursday: DayHours;
-  friday: DayHours;
-  saturday: DayHours;
-  sunday: DayHours;
-}
+type DayIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+type BusinessHours = { always_open: boolean } & Record<DayIndex, DayHours>;
 
 interface Location {
   id: string;
@@ -131,7 +62,8 @@ interface BusinessFormData {
   logo: File | null;
 }
 
-const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
 const DEFAULT_HOUR_PERIOD = (): HourPeriod => ({
   id: crypto.randomUUID(),
@@ -148,13 +80,13 @@ const DEFAULT_DAY_HOURS = (): DayHours => ({
 
 const DEFAULT_HOURS = (): BusinessHours => ({
   always_open: false,
-  monday: DEFAULT_DAY_HOURS(),
-  tuesday: DEFAULT_DAY_HOURS(),
-  wednesday: DEFAULT_DAY_HOURS(),
-  thursday: DEFAULT_DAY_HOURS(),
-  friday: DEFAULT_DAY_HOURS(),
-  saturday: { closed: false, open_24_hours: false, periods: [{ id: crypto.randomUUID(), open: "10:00", close: "15:00", closes_next_day: false }] },
-  sunday: { closed: true, open_24_hours: false, periods: [] },
+  0: { closed: true, open_24_hours: false, periods: [] },                 // Sunday
+  1: DEFAULT_DAY_HOURS(),                                                  // Monday
+  2: DEFAULT_DAY_HOURS(),                                                  // Tuesday
+  3: DEFAULT_DAY_HOURS(),                                                  // Wednesday
+  4: DEFAULT_DAY_HOURS(),                                                  // Thursday
+  5: DEFAULT_DAY_HOURS(),                                                  // Friday
+  6: { closed: false, open_24_hours: false, periods: [{ id: crypto.randomUUID(), open: "10:00", close: "15:00", closes_next_day: false }] }, // Saturday
 });
 
 const DEFAULT_LOCATION = (): Location => ({
@@ -185,7 +117,7 @@ const US_STATES = [
 ]; 
 
 const COMMON_AMENITIES = [
-  "Home Based", "Sidewalk Based", "Farmer's Market", "Pop Ups", "Catering", "Private Events", "Farmer's Market Only", "Pop Up Only", "Catering Only",
+  "Home Based", "Sidewalk Based", "Food Truck", "Farmer's Market", "Pop Ups", "Catering", "Private Events", "Farmer's Market Only", "Pop Up Only", "Catering Only",
   "DM To Order", "Text To Order", "Call To Order", "Order Online", "Walk-Up Orders", "Order Ahead", "Pre-Order Required", "No Walk-Ins", "Time-Slot Reservations",
   "Cash Only", "Cash Preferred", "Tap To Pay", "Credit Cards", "Cash App", "Zelle", "Venmo", "PayPal", "Apple Cash", "Google Pay", "Samsung Pay",
   "Pickup", "Curbside Pickup", "Delivery", "Shipping", "US Shipping", "International Shipping", "Street Parking", "Parking Lot", "Wheelchair Accessible", "Outdoor Seating", "Restrooms",
@@ -194,7 +126,7 @@ const COMMON_AMENITIES = [
 
 export default function AddBusiness() {
   const [searchParams] = useSearchParams();
-  // const navigate = useNavigate();
+  const navigate = useNavigate();
   const { user, isLoading } = useUser();
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<BusinessFormData>({
@@ -215,6 +147,7 @@ export default function AddBusiness() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outsideUS, setOutsideUS] = useState(false);
   const [geolocating, setGeolocating] = useState(false);
   // const [geocodeLookupIndex, setGeocodeLookupIndex] = useState<number | null>(null);
   // const [geocodeError, setGeocodeError] = useState<string | null>(null);
@@ -231,20 +164,30 @@ export default function AddBusiness() {
     }
   }, []);
 
-  useEffect(() => {
-    const lat = searchParams.get("lat");
-    const lng = searchParams.get("lng");
+  const lat = searchParams.get("lat");
+  const lng = searchParams.get("lng")
 
+
+
+  useEffect(() => {
     if (lat && lng) {
       const parsedLat = Number(lat);
       const parsedLng = Number(lng);
 
-      if (!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) &&
-          !isWithinUSBoundaries(parsedLat, parsedLng)) {
-        setError('The selected location is outside the United States. Please select a location within the US boundaries.');
+      if (!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng)) {
+        fetch(`/api/locations/validate-location?lat=${parsedLat}&lng=${parsedLng}`)
+          .then(response => response.json())
+          .then(data => {
+            if (!data.valid) {
+              setOutsideUS(true);
+            }
+          })
+          .catch(() => {
+            setOutsideUS(true);
+          });
       }
     }
-  }, [searchParams]);
+  }, [lat, lng]);
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
@@ -345,21 +288,14 @@ export default function AddBusiness() {
 
     if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) return null;
     
-    // Validate that coordinates are within US boundaries
-    if (!isWithinUSBoundaries(parsedLat, parsedLng)) {
-      console.warn('Location coordinates are outside US boundaries:', parsedLat, parsedLng);
-      return null;
-    }
-
     return { lat: parsedLat, lng: parsedLng };
   }, [searchParams]);
 
-  // Require a map-selected location — redirect back to home if none present
-  // useEffect(() => {
-  //   if (!selectedLocation) {
-  //     navigate('/', { replace: true });
-  //   }
-  // }, []);
+  useEffect(() => {
+    if (!selectedLocation) {
+      navigate('/', { replace: true });
+    }
+  }, [selectedLocation, navigate]);
 
   useEffect(() => {
     if (selectedLocation && form.locations.length > 0 && !form.locations[0].latitude) {
@@ -514,115 +450,41 @@ export default function AddBusiness() {
     setForm({ ...form, locations });
   };
 
-  const updateDayHours = (locationIndex: number, day: string, updates: Partial<DayHours>) => {
+  const updateDayHours = (locationIndex: number, day: DayIndex, updates: Partial<DayHours>) => {
     const loc = form.locations[locationIndex];
     const updatedHours = {
       ...loc.business_hours,
-      [day]: { ...loc.business_hours[day as keyof BusinessHours] as DayHours, ...updates },
+      [day]: { ...loc.business_hours[day], ...updates },
     };
     updateLocationHours(locationIndex, updatedHours as BusinessHours);
   };
 
-  const addHourPeriod = (locationIndex: number, day: string) => {
+  const addHourPeriod = (locationIndex: number, day: DayIndex) => {
     const loc = form.locations[locationIndex];
-    const dayHours = loc.business_hours[day as keyof BusinessHours] as DayHours;
+    const dayHours = loc.business_hours[day];
     const newPeriod = DEFAULT_HOUR_PERIOD();
     updateDayHours(locationIndex, day, {
       periods: [...dayHours.periods, newPeriod],
     });
   };
 
-  const updateHourPeriod = (locationIndex: number, day: string, periodId: string, updates: Partial<HourPeriod>) => {
+  const updateHourPeriod = (locationIndex: number, day: DayIndex, periodId: string, updates: Partial<HourPeriod>) => {
     const loc = form.locations[locationIndex];
-    const dayHours = loc.business_hours[day as keyof BusinessHours] as DayHours;
+    const dayHours = loc.business_hours[day];
     const updatedPeriods = dayHours.periods.map(period =>
       period.id === periodId ? { ...period, ...updates } : period
     );
     updateDayHours(locationIndex, day, { periods: updatedPeriods });
   };
 
-  const removeHourPeriod = (locationIndex: number, day: string, periodId: string) => {
+  const removeHourPeriod = (locationIndex: number, day: DayIndex, periodId: string) => {
     const loc = form.locations[locationIndex];
-    const dayHours = loc.business_hours[day as keyof BusinessHours] as DayHours;
+    const dayHours = loc.business_hours[day];
     if (dayHours.periods.length > 1) {
       const updatedPeriods = dayHours.periods.filter(period => period.id !== periodId);
       updateDayHours(locationIndex, day, { periods: updatedPeriods });
     }
   };
-
-  // const lookupCoordinatesFromAddress = async (locationIndex: number) => {
-  //   const location = form.locations[locationIndex];
-  //   if (!location.cross_street_1?.trim() || !location.cross_street_2?.trim() || !location.city?.trim() || !location.state) {
-  //     setGeocodeError("Please fill in both cross streets, city, and state first.");
-  //     return;
-  //   }
-  //   setGeocodeError(null);
-  //   setGeocodeLookupIndex(locationIndex);
-  //   try {
-  //     const params = new URLSearchParams({
-  //       cross_street_1: location.cross_street_1.trim(),
-  //       cross_street_2: location.cross_street_2.trim(),
-  //       city: location.city.trim(),
-  //       state: location.state,
-  //     });
-  //     const response = await fetch(`/api/geocode?${params}`);
-  //     if (!response.ok) {
-  //       const data = await response.json().catch(() => ({}));
-  //       throw new Error(data.error || "Could not find coordinates for this address.");
-  //     }
-  //     const data = await response.json();
-  //     updateLocation(locationIndex, {
-  //       ...location,
-  //       latitude: data.latitude,
-  //       longitude: data.longitude,
-  //     });
-  //   } catch (err: any) {
-  //     setGeocodeError(err.message || "Lookup failed.");
-  //   } finally {
-  //     setGeocodeLookupIndex(null);
-  //   }
-  // };
-
-  // const scheduleAutoGeocode = (locationIndex: number, loc: Location) => {
-  //   if (geocodeTimers.current[locationIndex]) {
-  //     clearTimeout(geocodeTimers.current[locationIndex]);
-  //   }
-  //   // Don't overwrite coordinates that were set from the map
-  //   if (loc.latitude && loc.longitude) return;
-  //   if (!loc.cross_street_1?.trim() || !loc.cross_street_2?.trim() || !loc.city?.trim() || !loc.state) {
-  //     return;
-  //   }
-  //   setGeocodeError(null);
-  //   geocodeTimers.current[locationIndex] = setTimeout(async () => {
-  //     setGeocodeLookupIndex(locationIndex);
-  //     try {
-  //       const params = new URLSearchParams({
-  //         cross_street_1: loc.cross_street_1.trim(),
-  //         cross_street_2: loc.cross_street_2.trim(),
-  //         city: loc.city.trim(),
-  //         state: loc.state,
-  //       });
-  //       const response = await fetch(`/api/geocode?${params}`);
-  //       if (!response.ok) {
-  //         const data = await response.json().catch(() => ({}));
-  //         setGeocodeError(data.error || "Could not find coordinates for this address.");
-  //         return;
-  //       }
-  //       const data = await response.json();
-  //       setForm(prev => {
-  //         const locations = [...prev.locations];
-  //         locations[locationIndex] = { ...locations[locationIndex], latitude: data.latitude, longitude: data.longitude };
-  //         return { ...prev, locations };
-  //       });
-  //     } catch (err: any) {
-  //       setGeocodeError(err.message || "Lookup failed.");
-  //     } finally {
-  //       setGeocodeLookupIndex(null);
-  //       delete geocodeTimers.current[locationIndex];
-  //     }
-  //   }, 800);
-  // };
-
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -706,6 +568,16 @@ export default function AddBusiness() {
 
   if (isLoading) {
     return <div>Loading...</div>;
+  }
+
+  if (outsideUS) {
+    return (
+      <div>
+        <h1>Location Outside the United States</h1>
+        <p>The selected location is outside the United States. VendorMap only supports businesses located within the US.</p>
+        <p><a href="/">Go back to the map</a> and select a location within the United States.</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -1152,7 +1024,7 @@ export default function AddBusiness() {
                       const dayHours = loc.business_hours[day] as DayHours;
                       return (
                         <div key={day}>
-                          <h4>{day.charAt(0).toUpperCase() + day.slice(1)}</h4>
+                          <h4>{DAY_NAMES[day]}</h4>
 
                           <label>
                             <input
@@ -1222,7 +1094,7 @@ export default function AddBusiness() {
                                     type="button" 
                                     onClick={() => addHourPeriod(locationIndex, day)}
                                   >
-                                    Add another set of hours for {day.charAt(0).toUpperCase() + day.slice(1)}
+                                    Add another set of hours for {DAY_NAMES[day]}
                                   </button>
                                 </div>
                               )}

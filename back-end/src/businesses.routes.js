@@ -2,7 +2,7 @@ import express from "express";
 import pool from "./db.js";
 import multer from 'multer';
 import { requireToken, requireAuth, requireAdmin } from './auth.js';
-import { geocodeIntersection, snapToNearestIntersection } from './geocode.js';
+import { geocodeIntersection, snapToNearestIntersection, isWithinUSBoundaries } from './geocode.js';
 import { uploadFile } from './storage.js';
 
 const router = express.Router();
@@ -13,69 +13,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit per file
 });
-
-// Helper function to validate if coordinates are within US boundaries
-function isWithinUSBoundaries(latitude, longitude) {
-  // Alaska land boundaries (excluding surrounding ocean)
-  if (latitude >= 54.0 && latitude <= 71.5 && 
-      longitude >= -179.9 && longitude <= -129.0) {
-    // Exclude major bodies of water in Alaska region
-    if (latitude > 70.0 && longitude < -145.0) return false; // Arctic Ocean
-    if (latitude < 56.0 && longitude < -160.0) return false; // Bering Sea
-    return true;
-  }
-  
-  // Continental US land boundaries (more restrictive)
-  if (latitude >= 24.4 && latitude <= 49.0 && 
-      longitude >= -125.0 && longitude <= -66.9) {
-    
-    // Exclude Mexico border areas
-    if (latitude < 25.8 && longitude > -97.0) return false;
-    if (latitude < 31.0 && longitude > -106.0 && longitude < -93.0) return false;
-    if (latitude < 32.5 && longitude > -117.0 && longitude < -106.0) return false;
-    
-    // Exclude Atlantic Ocean (far east)
-    if (longitude > -70.0 && latitude < 42.0) return false;
-    
-    // Exclude Pacific Ocean (far west coastal areas)
-    if (longitude < -123.0 && latitude > 46.0) return false; // Washington coast
-    if (longitude < -120.0 && latitude < 34.0) return false; // Southern California coast
-    
-    // Exclude Gulf of Mexico
-    if (latitude < 26.0 && longitude > -97.0 && longitude < -80.0) return false;
-    
-    // Exclude Great Lakes (major water bodies)
-    if (latitude > 41.0 && latitude < 49.0 && longitude > -93.0 && longitude < -76.0) {
-      // Allow some land areas around Great Lakes but exclude the lakes themselves
-      if (latitude > 45.0 && longitude > -90.0 && longitude < -84.0) return false; // Superior
-      if (latitude > 44.0 && latitude < 47.0 && longitude > -88.0 && longitude < -84.0) return false; // Michigan
-    }
-    
-    return true;
-  }
-  
-  // Hawaii land boundaries (more restrictive than ocean)
-  if (latitude >= 18.9 && latitude <= 22.3 && 
-      longitude >= -160.5 && longitude <= -154.7) {
-    // Only allow the main Hawaiian islands, exclude surrounding ocean
-    return true;
-  }
-  
-  // Puerto Rico and US territories
-  if (latitude >= 17.9 && latitude <= 18.5 && 
-      longitude >= -67.3 && longitude <= -65.2) {
-    return true;
-  }
-  
-  // US Virgin Islands
-  if (latitude >= 17.6 && latitude <= 18.4 && 
-      longitude >= -65.1 && longitude <= -64.5) {
-    return true;
-  }
-  
-  return false;
-}
-
 
 router.get("/locations", async (req, res) => {
   try {
@@ -96,6 +33,7 @@ router.get("/locations", async (req, res) => {
         l.phones,
         b.id AS business_id,
         b.name AS business_name,
+        b.logo_url AS business_logo,
         c.name AS category_name,
         c.icon AS category_icon,
         c.color AS category_color
@@ -198,6 +136,7 @@ router.get("/businesses", async (req, res) => {
         b.name,
         b.logo_url,
         b.keywords,
+        b.amenities,
         c.name AS category_name,
         COALESCE(
           ARRAY_REMOVE(
@@ -218,13 +157,32 @@ router.get("/businesses", async (req, res) => {
         ON lp.location_id = bl.id
       WHERE b.is_active = true
         AND b.moderation_status = 'approved'
-      GROUP BY b.id, b.name, b.logo_url, b.keywords, c.name
+      GROUP BY b.id, b.name, b.logo_url, b.keywords, b.amenities, c.name
       ORDER BY b.name
     `);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching businesses:', err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Validate if coordinates are within US boundaries
+router.get("/locations/validate-location", (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+    
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return res.status(400).json({ error: "Invalid coordinates" });
+    }
+    
+    const isValid = isWithinUSBoundaries(latitude, longitude);
+    res.json({ valid: isValid });
+  } catch (err) {
+    console.error("GET /locations/validate-location error:", err);
+    res.status(500).json({ error: "Failed to validate location" });
   }
 });
 
@@ -242,6 +200,7 @@ router.get("/locations/:id", async (req, res) => {
           b.email,
           b.logo_url,
           b.keywords,
+          b.amenities,
           b.is_chain,
           b.parent_company,
           b.if_verified,
@@ -266,7 +225,6 @@ router.get("/locations/:id", async (req, res) => {
           bl.neighborhood,
           bl.business_hours,
           bl.notes,
-          bl.amenities,
           bl.latitude,
           bl.longitude,
           bl.original_latitude,
@@ -377,6 +335,7 @@ router.get('/businesses/:id', async (req, res) => {
           b.email,
           b.logo_url,
           b.keywords,
+          b.amenities,
           b.is_chain,
           b.parent_company,
           b.if_verified,
@@ -418,7 +377,6 @@ router.get('/businesses/:id', async (req, res) => {
           bl.neighborhood,
           bl.business_hours,
           bl.notes,
-          bl.amenities,
           bl.latitude,
           bl.longitude,
           bl.original_latitude,
@@ -453,7 +411,10 @@ router.get('/businesses/:id', async (req, res) => {
 
     res.json({
       ...businessResult.rows[0],
-      locations: locationsResult.rows,
+      locations: locationsResult.rows.map(location => ({
+        ...location,
+        amenities: businessResult.rows[0].amenities
+      })),
     });
   } catch (err) {
     console.error('Error fetching business details:', err);
