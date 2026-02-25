@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import useUser from '../src/useUser';
 
 interface LocationPhoto {
@@ -103,6 +103,63 @@ function parseStringList(value: unknown): string[] {
     return [];
 }
 
+function parseAmenities(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value.filter((item): item is string => typeof item === 'string');
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            try {
+                const parsed = JSON.parse(trimmed);
+                if (Array.isArray(parsed)) {
+                    return parsed.filter((item): item is string => typeof item === 'string');
+                }
+            } catch {
+            }
+        }
+
+        return trimmed
+            .split(/,|\||\//)
+            .map((part) => part.trim())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
+function getTodayDay(): string {
+    return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
+}
+
+function parseTimeToMinutes(timeStr: string): number | null {
+    const clean = timeStr.trim().toLowerCase().replace(/\s+/g, '');
+    const match = clean.match(/^(\d{1,2})(?::(\d{2}))?([ap]m)?$/);
+    if (!match) return null;
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    const ampm = match[3];
+    if (ampm === 'pm' && hours !== 12) hours += 12;
+    if (ampm === 'am' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+}
+
+function isOpenNow(timeRangeStr: string): boolean | null {
+    const lower = timeRangeStr.toLowerCase().trim();
+    if (lower === 'closed' || lower === 'not available') return false;
+    const dashMatch = lower.replace(/\s+/g, '').match(/^(.+?)[-–](.+)$/);
+    if (!dashMatch) return null;
+    const openMin = parseTimeToMinutes(dashMatch[1]);
+    const closeMin = parseTimeToMinutes(dashMatch[2]);
+    if (openMin === null || closeMin === null) return null;
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+    return currentMin >= openMin && currentMin < closeMin;
+}
+
 function formatBusinessHours(hours: unknown): string[] {
     if (!hours) return [];
 
@@ -125,12 +182,54 @@ function formatBusinessHours(hours: unknown): string[] {
     }
 
     if (typeof hours === 'object') {
-        return Object.entries(hours as Record<string, unknown>).map(([day, value]) => {
-            if (typeof value === 'string') return `${day}: ${value}`;
-            if (Array.isArray(value)) return `${day}: ${value.join(', ')}`;
-            if (value && typeof value === 'object') return `${day}: ${JSON.stringify(value)}`;
-            return `${day}: ${String(value ?? '')}`;
-        });
+        const DAY_NAMES_MAP = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const NUMERIC_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6']);
+        const STRING_DAY_KEYS = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+        const STRING_DAY_ORDER: Record<string, number> = {
+            sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+        };
+
+        const formatValue = (label: string, value: unknown): string => {
+            if (typeof value === 'string') return `${label}: ${value}`;
+            if (Array.isArray(value)) return `${label}: ${value.join(', ')}`;
+            if (value && typeof value === 'object') {
+                const schedule = value as Record<string, unknown>;
+                let timeStr: string;
+                if (schedule.closed === true) {
+                    timeStr = 'Closed';
+                } else if (schedule.open_24_hours === true) {
+                    timeStr = 'Open 24 hours';
+                } else if (Array.isArray(schedule.periods) && schedule.periods.length > 0) {
+                    timeStr = schedule.periods
+                        .map((period: unknown) => {
+                            if (period && typeof period === 'object') {
+                                const p = period as Record<string, unknown>;
+                                if (p.open && p.close) return `${p.open} – ${p.close}`;
+                            }
+                            return '';
+                        })
+                        .filter(Boolean)
+                        .join(', ');
+                } else {
+                    timeStr = 'Hours not available';
+                }
+                return `${label}: ${timeStr}`;
+            }
+            return `${label}: ${String(value ?? '')}`;
+        };
+
+        const entries = Object.entries(hours as Record<string, unknown>);
+        const numericEntries = entries.filter(([key]) => NUMERIC_KEYS.has(key));
+        if (numericEntries.length > 0) {
+            return numericEntries
+                .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
+                .map(([key, value]) => formatValue(DAY_NAMES_MAP[parseInt(key, 10)], value));
+        }
+
+        return entries
+            .filter(([day]) => STRING_DAY_KEYS.has(day.toLowerCase()))
+            .sort(([a], [b]) => (STRING_DAY_ORDER[a.toLowerCase()] ?? 7) - (STRING_DAY_ORDER[b.toLowerCase()] ?? 7))
+            .map(([day, value]) => formatValue(day.charAt(0).toUpperCase() + day.slice(1), value));
     }
 
     return [String(hours)];
@@ -168,6 +267,7 @@ function renderStars(rating: number, outOf = 5): string {
 export default function BusinessPage() {
     const { id } = useParams<{ id: string }>();
     const { user } = useUser();
+    const navigate = useNavigate();
     const [business, setBusiness] = useState<BusinessDetails | null>(null);
     const [reviewsData, setReviewsData] = useState<ReviewsData>({ reviews: [], avg_rating: 0, review_count: 0 });
     const [loading, setLoading] = useState(true);
@@ -564,6 +664,31 @@ export default function BusinessPage() {
                                     📍 {location.cross_street_1} & {location.cross_street_2}, {location.city}, {location.state} {location.zip_code}
                                 </p>
 
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const params = new URLSearchParams({
+                                            viewLat: location.latitude.toString(),
+                                            viewLng: location.longitude.toString(),
+                                            locationId: location.location_id
+                                        });
+                                        navigate(`/?${params.toString()}`);
+                                    }}
+                                    style={{
+                                        background: '#3b82f6',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '8px 16px',
+                                        fontSize: '14px',
+                                        cursor: 'pointer',
+                                        marginTop: '8px',
+                                        marginBottom: '8px'
+                                    }}
+                                >
+                                    View on Map
+                                </button>
+
                                 {location.phones && location.phones.map((ph, i) => <p key={i}>📞 {ph}</p>)}
                                 {location.local_email && <p>✉️ {location.local_email}</p>}
                                 {location.temporarily_closed && (
@@ -572,21 +697,7 @@ export default function BusinessPage() {
                                     </p>
                                 )}
 
-                                <div style={{ marginTop: '8px' }}>
-                                    <strong>Business hours:</strong>
-                                    {hours.length > 0 ? (
-                                        <ul style={{ marginLeft: '20px' }}>
-                                            {hours.map((line) => (
-                                                <li key={line}>{line}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p>Not listed</p>
-                                    )}
-                                </div>
-
                                 <div style={{ marginTop: '10px' }}>
-                                    <strong>Location photos:</strong>
                                     {location.photos.length > 0 ? (
                                         <div
                                             style={{
@@ -626,12 +737,97 @@ export default function BusinessPage() {
                                         <p>None uploaded</p>
                                     )}
                                 </div>
+
+                                <div style={{ marginTop: '8px' }}>
+                                    <strong>Business hours:</strong>
+                                    {hours.length > 0 ? (
+                                        <div style={{ marginTop: '6px' }}>
+                                            {hours.map((line, i) => {
+                                                const colonIdx = line.indexOf(':');
+                                                const day = colonIdx > -1 ? line.slice(0, colonIdx).trim() : '';
+                                                const time = colonIdx > -1 ? line.slice(colonIdx + 1).trim() : line;
+                                                const isToday = day.length >= 3 && getTodayDay().toLowerCase().startsWith(day.slice(0, 3).toLowerCase());
+                                                const openStatus = isToday ? isOpenNow(time) : null;
+                                                return (
+                                                    <div
+                                                        key={i}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            padding: '3px 0',
+                                                            fontWeight: isToday ? 600 : 400,
+                                                            color: isToday ? '#57ff03' : '#ffffff',
+                                                        }}
+                                                    >
+                                                        <span style={{ minWidth: '100px' }}>{day || line}</span>
+                                                        {day && <span style={{ color: '#ffffff' }}>{time}</span>}
+                                                        {openStatus !== null && (
+                                                            <span style={{
+                                                                fontSize: '11px',
+                                                                fontWeight: 600,
+                                                                color: openStatus ? '#16a34a' : '#dc2626',
+                                                                background: openStatus ? '#f0fdf4' : '#fef2f2',
+                                                                border: `1px solid ${openStatus ? '#bbf7d0' : '#fecaca'}`,
+                                                                borderRadius: '4px',
+                                                                padding: '1px 6px',
+                                                            }}>
+                                                                {openStatus ? 'Open now' : 'Closed now'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <p style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not listed</p>
+                                    )}
+                                </div>
                             </section>
                     
                             </>
                         );
                     })}
                 </div>
+            )}
+
+            {business.locations.some(location => parseAmenities(location.amenities).length > 0) && (
+                <section style={{ marginTop: '26px' }}>
+                    <h2 style={{ marginBottom: '10px' }}>Amenities</h2>
+                    {business.locations.map((location) => {
+                        const amenities = parseAmenities(location.amenities);
+                        if (amenities.length === 0) return null;
+                        
+                        return (
+                            <div key={location.location_id} style={{ marginBottom: '16px' }}>
+                                {business.locations.length > 1 && (
+                                    <h3 style={{ marginBottom: '8px', fontSize: '16px' }}>
+                                        {location.location_name ?? 'Unnamed Location'}
+                                    </h3>
+                                )}
+                                <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                }}>
+                                    {amenities.map((amenity, index) => (
+                                        <span
+                                            key={index}
+                                            style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '6px',
+                                                fontSize: '14px',
+                                                border: '1px solid #e2e8f0',
+                                            }}
+                                        >
+                                            {amenity}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </section>
             )}
 
             <section style={{ marginTop: '26px' }}>

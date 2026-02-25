@@ -5,10 +5,11 @@ interface BusinessRow {
 	id: string;
 	name: string;
 	logo_url?: string | null;
-	photo_urls?: unknown;
+	photo_urls?: string[] | string | null;
 	category_name?: string | null;
-	days_open?: unknown;
-	keywords?: unknown;
+	days_open?: string[] | string | null;
+	keywords?: string[] | string | null;
+	amenities?: string[] | string | null;
 }
 
 interface LocationRow {
@@ -26,6 +27,7 @@ interface BusinessListItem {
 	categories: string[];
 	daysOpen: string[];
 	keywords: string[];
+	amenities: string[];
 }
 
 const DAY_OPTIONS = [
@@ -84,7 +86,6 @@ export default function BusinessesList() {
 	const [showFilters, setShowFilters] = useState(false);
 	const [selectedCategory, setSelectedCategory] = useState("");
 	const [selectedDay, setSelectedDay] = useState("");
-	const [keywordQuery, setKeywordQuery] = useState("");
 
 	useEffect(() => {
 		let mounted = true;
@@ -126,6 +127,7 @@ export default function BusinessesList() {
 						categories,
 						daysOpen: toStringArray(row.days_open),
 						keywords: toStringArray(row.keywords),
+						amenities: toStringArray(row.amenities),
 					});
 				});
 
@@ -140,6 +142,7 @@ export default function BusinessesList() {
 							categories: row.category_name ? [row.category_name] : [],
 							daysOpen: [],
 							keywords: [],
+							amenities: [],
 						});
 						return;
 					}
@@ -201,7 +204,6 @@ export default function BusinessesList() {
 
 	const filteredBusinesses = useMemo(() => {
 		const query = normalize(searchQuery);
-		const keyword = normalize(keywordQuery);
 		const category = normalize(selectedCategory);
 		const day = normalize(selectedDay);
 
@@ -210,12 +212,14 @@ export default function BusinessesList() {
 			const normalizedCategories = business.categories.map(normalize);
 			const normalizedDays = business.daysOpen.map(normalize);
 			const normalizedKeywords = business.keywords.map(normalize);
+			const normalizedAmenities = business.amenities.map(normalize);
 
 			const matchesSearch =
 				!query ||
 				normalizedName.includes(query) ||
 				normalizedCategories.some((item) => item.includes(query)) ||
-				normalizedKeywords.some((item) => item.includes(query));
+				normalizedKeywords.some((item) => item.includes(query)) ||
+				normalizedAmenities.some((item) => item.includes(query));
 
 			const matchesCategory = !category || normalizedCategories.includes(category);
 
@@ -225,12 +229,9 @@ export default function BusinessesList() {
 					(openDay) => openDay === day || openDay.startsWith(day.slice(0, 3))
 				);
 
-			const matchesKeyword =
-				!keyword || normalizedKeywords.some((item) => item.includes(keyword));
-
-			return matchesSearch && matchesCategory && matchesDay && matchesKeyword;
+			return matchesSearch && matchesCategory && matchesDay;
 		});
-	}, [businesses, keywordQuery, searchQuery, selectedCategory, selectedDay]);
+	}, [businesses, searchQuery, selectedCategory, selectedDay]);
 
 	return (
 		<main style={{ padding: "20px" }}>
@@ -240,8 +241,8 @@ export default function BusinessesList() {
 					type="text"
 					value={searchQuery}
 					onChange={(event) => setSearchQuery(event.target.value)}
-					placeholder="Search by business name"
-					aria-label="Search businesses by name"
+					placeholder="Search by name, keywords, or amenities"
+					aria-label="Search businesses by name, keywords, or amenities"
 					style={{
 						flex: 1,
 						padding: "10px",
@@ -312,17 +313,7 @@ export default function BusinessesList() {
 						</select>
 					</label>
 
-					<label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-						Keywords
-						<input
-							type="text"
-							value={keywordQuery}
-							onChange={(event) => setKeywordQuery(event.target.value)}
-							placeholder="e.g. vegan, family"
-							style={{ padding: "9px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
-						/>
-					</label>
-				</section>
+					</section>
 			)}
 
 			{loading && <p>Loading businesses...</p>}

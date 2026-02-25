@@ -55,6 +55,7 @@ interface BusinessLocation {
   phones: string[] | null;
   business_id: string;
   business_name: string;
+  business_logo: string | null;
   category_name: string;
   category_icon: string;
   category_color: string;
@@ -63,6 +64,102 @@ interface BusinessLocation {
 interface PendingLocation {
   lat: number;
   lng: number;
+}
+
+function distSq(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
+}
+
+function closestPoint(
+  lat: number,
+  lng: number,
+  points: { lat: number; lng: number }[]
+): { lat: number; lng: number } | null {
+  if (points.length === 0) return null;
+  let closest = points[0];
+  let minDist = distSq(lat, lng, closest.lat, closest.lng);
+  for (const p of points.slice(1)) {
+    const d = distSq(lat, lng, p.lat, p.lng);
+    if (d < minDist) {
+      minDist = d;
+      closest = p;
+    }
+  }
+  return closest;
+}
+
+async function snapToNearestIntersection(
+  lat: number,
+  lng: number
+): Promise<{ lat: number; lng: number }> {
+  const query = `
+    [out:json][timeout:10];
+    way(around:150,${lat},${lng})[highway][highway!~"^(footway|path|cycleway|steps|pedestrian|track|service)$"];
+    out geom;
+  `;
+  try {
+    const response = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      body: `data=${encodeURIComponent(query)}`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    if (!response.ok) return { lat, lng };
+    const data = await response.json();
+    const ways: { geometry?: { lat: number; lon: number }[] }[] = data.elements ?? [];
+    if (ways.length === 0) return { lat, lng };
+
+    // Count how many ways each node coordinate appears in — nodes shared by 2+ ways are intersections
+    const nodeCount = new Map<string, { lat: number; lng: number; count: number }>();
+    for (const way of ways) {
+      if (!way.geometry) continue;
+      for (const node of way.geometry) {
+        const key = `${node.lat},${node.lon}`;
+        const existing = nodeCount.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          nodeCount.set(key, { lat: node.lat, lng: node.lon, count: 1 });
+        }
+      }
+    }
+
+    const intersections = Array.from(nodeCount.values()).filter((n) => n.count >= 2);
+    const candidates = intersections.length > 0 ? intersections : Array.from(nodeCount.values());
+    return closestPoint(lat, lng, candidates) ?? { lat, lng };
+  } catch {
+    return { lat, lng };
+  }
+}
+
+function MapBoundsTracker({
+  locations,
+  onCountChange,
+}: {
+  locations: BusinessLocation[];
+  onCountChange: (count: number) => void;
+}) {
+  const map = useMapEvents({
+    moveend() { update(); },
+    zoomend() { update(); },
+  });
+
+  function update() {
+    const bounds = map.getBounds();
+    const count = locations.filter((loc) => {
+      const showExact =
+        loc.location_privacy === 'exact' &&
+        loc.original_latitude != null &&
+        loc.original_longitude != null;
+      const lat = showExact ? loc.original_latitude! : loc.latitude;
+      const lng = showExact ? loc.original_longitude! : loc.longitude;
+      return bounds.contains(L.latLng(lat, lng));
+    }).length;
+    onCountChange(count);
+  }
+
+  useEffect(() => { update(); }, [locations]);
+
+  return null;
 }
 
 function MapClickHandler({
@@ -105,12 +202,15 @@ export default function HomePage({
   const [error, setError] = useState<string | null>(null);
   const [isAddMode, setIsAddMode] = useState(searchParams.get('addMode') === '1');
   const [pendingLocation, setPendingLocation] = useState<PendingLocation | null>(null);
+  const [isSnapping, setIsSnapping] = useState(false);
+  const [locationOutsideUS, setLocationOutsideUS] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(0);
   const pendingMarkerRef = useRef<L.Marker | null>(null);
 
   const viewLat = searchParams.get('viewLat');
   const viewLng = searchParams.get('viewLng');
+  const viewLocationId = searchParams.get('locationId');
   const viewLocation = viewLat && viewLng ? { lat: Number(viewLat), lng: Number(viewLng) } : null;
-  const isSelectMode = searchParams.get('addMode') === '1';
 
   useEffect(() => {
   fetch("/api/locations")
@@ -150,13 +250,24 @@ export default function HomePage({
     function stopAddMode() {
       setIsAddMode(false);
       setPendingLocation(null);
+      setLocationOutsideUS(false);
     }
 
     function handleMapPick(location: PendingLocation) {
+      setLocationOutsideUS(false);
       setPendingLocation(location);
+      setIsSnapping(true);
+      snapToNearestIntersection(location.lat, location.lng).then((snapped) => {
+        setPendingLocation(snapped);
+        setIsSnapping(false);
+        fetch(`/api/locations/validate-location?lat=${snapped.lat}&lng=${snapped.lng}`)
+          .then(r => r.json())
+          .then(data => { if (!data.valid) setLocationOutsideUS(true); })
+          .catch(() => setLocationOutsideUS(true));
+      });
     }
 
-    function handleConfirmAddBusiness() {
+    function handleAddBusiness() {
       if (!pendingLocation) return;
       const params = new URLSearchParams({
         lat: pendingLocation.lat.toFixed(6),
@@ -176,48 +287,25 @@ export default function HomePage({
           ) : (
             <>
               <p>
-                {isSelectMode
-                  ? "Click on the map to confirm a location, then return to the form."
+                {isSnapping
+                  ? "Snapping to nearest intersection..."
                   : "Click on the map to place a temporary marker."
                 }
               </p>
-              <button type="button" onClick={isSelectMode ? () => navigate('/add-business') : stopAddMode}>
-                {isSelectMode ? "Cancel — return to form" : "Exit add mode"}
+              <button type="button" onClick={stopAddMode}>
+                Exit Add Business Mode
               </button>
             </>
           )}
 
-        <div style={{ height: "72vh", width: "100%" }}>
+        <div className="map-wrapper">
         <MapContainer center={mapCenter} zoom={locations.length > 0 ? defaultZoom : defaultZoom - 1}
-          style={{ height: "100%", width: "100%" }}
           scrollWheelZoom={true}>
             <MapClickHandler enabled={isAddMode} onSelect={handleMapPick} />
+            <MapBoundsTracker locations={locations} onCountChange={setVisibleCount} />
             {viewLocation && (
               <>
                 <MapViewController lat={viewLocation.lat} lng={viewLocation.lng} />
-                <Marker position={[viewLocation.lat, viewLocation.lng]}>
-                  <Popup>
-                    <div style={{ minWidth: "210px" }}>
-                      <h3 style={{ marginBottom: "8px" }}>Confirm this location?</h3>
-                      <p style={{ marginBottom: "8px", fontSize: "14px" }}>
-                        Lat: {viewLocation.lat.toFixed(6)}<br />
-                        Lng: {viewLocation.lng.toFixed(6)}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const params = new URLSearchParams({
-                            lat: viewLocation.lat.toFixed(6),
-                            lng: viewLocation.lng.toFixed(6),
-                          });
-                          navigate(`/add-business?${params.toString()}`);
-                        }}
-                      >
-                        Confirm location
-                      </button>
-                    </div>
-                  </Popup>
-                </Marker>
               </>
             )}
             <TileLayer                
@@ -237,17 +325,31 @@ export default function HomePage({
                 key={loc.location_id}
                 position={[pinLat, pinLng]}
                 icon={createCustomIcon(loc.category_color, loc.category_icon)}
+                ref={viewLocationId === loc.location_id ? (marker) => {
+                  if (marker && viewLocation) {
+                    setTimeout(() => marker.openPopup(), 100);
+                  }
+                } : undefined}
                 >
-                <Popup>
-                    <div style={{ padding: "12px 14px" }}>
-                    <h3>{loc.business_name}</h3>
-                    <p>{loc.location_name}</p>
-                    <p>
-                      📍 {loc.cross_street_1} & {loc.cross_street_2}<br />
-                      {loc.city}, {loc.state}, {loc.zip_code}
-                    </p>
-                    <Link to={`/locations/${loc.location_id}`}>View Details →</Link>
+                <Popup className="popup-container">
+                  <div className="popup-header">
+                    {loc.business_logo && (
+                      <img src={loc.business_logo} alt={loc.business_name} className="popup-logo"/>
+                    )}
+                    <div>
+                      <h3>{loc.business_name}</h3>
+                      <p>{loc.location_name}</p>
                     </div>
+                  </div>
+                  
+                  <div>
+    
+                  <p>
+                    📍 {loc.cross_street_1} & {loc.cross_street_2}<br />
+              
+                  </p>
+                  <Link to={`/locations/${loc.location_id}`}>View Details →</Link>
+                  </div>
                 </Popup>
               </Marker>
               );
@@ -258,17 +360,22 @@ export default function HomePage({
                 ref={pendingMarkerRef}
                 position={[pendingLocation.lat, pendingLocation.lng]}
               >
-                <Popup>
-                  <div style={{ minWidth: "210px" }}>
-                    <h3 style={{ marginBottom: "8px" }}>
-                      {isSelectMode ? "Confirm this location?" : "Add business here?"}
-                    </h3>
-
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button type="button" onClick={handleConfirmAddBusiness}>
-                        {isSelectMode ? "Confirm location" : "Add business here"}
-                      </button>
-                    </div>
+                <Popup className="popup-container">
+                  <div>
+                    {locationOutsideUS ? (
+                      <>
+                        <strong>Outside US Boundaries</strong><br />
+                        <small>VendorMap only supports businesses in the United States. Please select a different location.</small>
+                      </>
+                    ) : (
+                      <>
+                        <strong>Add Business Here?</strong><br />
+                        <small>For owner's safety and privacy concerns, map pin will show the closest cross streets.</small>
+                        <button type="button" onClick={handleAddBusiness}>
+                          Add business here
+                        </button>
+                      </>
+                    )}
                   </div>
                 </Popup>
               </Marker>
@@ -277,26 +384,28 @@ export default function HomePage({
         </MapContainer>
 
         </div>
-        {!loading && !error && locations.length > 0 && (
-          <div>
-            📍 {locations.length} location{locations.length !== 1 ? "s" : ""}
-          </div>
-        )}
-
-        {error && (
-            <div style={{ padding: "16px", background: "#fee", color: "#c33", borderRadius: "8px", margin: "16px" }}>
-                <strong>Error:</strong> {error}
-            </div>
-        )}
-
-        {!loading && !error && locations.length === 0 && (
+        <div className="map-footer">
+          {!loading && !error && locations.length > 0 && (
             <div>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>🗺️</div>
-                <p style={{ margin: 0, fontSize: 14, color: "#64748b" }}>
-                No locations to display yet
-                </p>
+              📍 {visibleCount} location{visibleCount !== 1 ? "s" : ""} in view
             </div>
-        )}
+          )}
+
+          {error && (
+              <div className="map-error">
+                  <strong>Error:</strong> {error}
+              </div>
+          )}
+
+          {!loading && !error && locations.length === 0 && (
+              <div>
+                  <div className="map-empty-icon">🗺️</div>
+                  <p className="map-empty-text">
+                  No locations to display yet
+                  </p>
+              </div>
+          )}
+        </div>
         </>
     );
 }
