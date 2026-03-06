@@ -36,10 +36,6 @@ interface UserBusiness {
     category_name: string | null;
 }
 
-async function getToken(user: { getIdToken: () => Promise<string> }) {
-    return user.getIdToken();
-}
-
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
     pending:  { label: 'Pending review', color: '#b45309' },
     approved: { label: 'Approved',       color: '#15803d' },
@@ -69,11 +65,11 @@ export default function UserProfile() {
     useEffect(() => {
         if (!user) return;
         user.getIdToken().then((token: string) => Promise.all([
-            fetch('/api/user/profile',    { headers: { authtoken: token } }).then(r => r.json()),
-            fetch('/api/user/reviews',    { headers: { authtoken: token } }).then(r => r.json()),
-            fetch('/api/user/businesses', { headers: { authtoken: token } }).then(r => r.json()),
+            fetch('/api/user/profile',    { headers: { authtoken: token } }).then(res => res.json()),
+            fetch('/api/user/reviews',    { headers: { authtoken: token } }).then(res => res.json()),
+            fetch('/api/user/businesses', { headers: { authtoken: token } }).then(res => res.json()),
             fetch('/api/admin/check-role', { headers: { authtoken: token } })
-                .then(r => r.ok ? r.json() : null).catch(() => null),
+                .then(res => res.ok ? res.json() : null).catch(() => null),
         ])).then(([profileData, reviewsData, businessesData, adminData]: [
             DbProfile,
             UserReview[],
@@ -95,7 +91,7 @@ export default function UserProfile() {
         setSaveError('');
         setSaving(true);
         try {
-            const token = await getToken(user);
+            const token = await user.getIdToken();
             const res = await fetch('/api/user/profile', {
                 method: 'PUT',
                 headers: { authtoken: token, 'Content-Type': 'application/json' },
@@ -117,7 +113,7 @@ export default function UserProfile() {
         if (!file || !user) return;
         setAvatarUploading(true);
         try {
-            const token = await getToken(user);
+            const token = await user.getIdToken();
             const form = new FormData();
             form.append('avatar', file);
             const res = await fetch('/api/user/avatar', {
@@ -146,104 +142,102 @@ export default function UserProfile() {
     if (!user) return <p>Please <a href="/login">log in</a> to view your profile.</p>;
 
     return (
-        <div style={{ maxWidth: 620, margin: '2rem auto', padding: '0 1rem' }}>
+        <div className="user-profile-container">
             <h1>Profile</h1>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div className="profile-header">
                 <div
                     onClick={() => avatarInputRef.current?.click()}
-                    style={{
-                        width: 80, height: 80, borderRadius: '50%',
-                        background: '#ddd', overflow: 'hidden', cursor: 'pointer',
-                        flexShrink: 0, position: 'relative',
-                    }}
+                    className="avatar-container"
                     title="Click to upload avatar"
                 >
                     {profile?.avatar_url
-                        ? <img src={profile.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '2rem', color: '#999' }}>
+                        ? <img src={profile.avatar_url} alt="avatar" className="avatar-image" />
+                        : <span className="avatar-placeholder">
                             {(profile?.username ?? user.email ?? '?')[0].toUpperCase()}
                           </span>
                     }
                     {avatarUploading && (
-                        <div style={{
-                            position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: '#fff', fontSize: '0.75rem',
-                        }}>Uploading…</div>
+                        <div className="avatar-uploading-overlay">Uploading…</div>
                     )}
                 </div>
-                <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
-                <div>
-                    <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{profile?.username ?? ''}</div>
-                    <div style={{ color: '#666', fontSize: '0.9rem' }}>{user.email}</div>
-                    <button onClick={() => avatarInputRef.current?.click()} style={{ marginTop: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                        Change photo
-                    </button>
+                <input ref={avatarInputRef} type="file" accept="image/*" className="hidden-input" onChange={handleAvatarChange} />
+                <div className="user-info">
+                    <div className="user-username">{profile?.username ?? ''}</div>
+                    <div className="user-email">{user.email}</div>
+                    
                 </div>
+            </div>
+            <div className="profile-actions">
+                <button onClick={() => avatarInputRef.current?.click()} className="btn btn-secondary">
+                        Change Photo
+                </button>
+
+                <button onClick={() => setEditing(true)} className="btn btn-secondary">Edit Profile</button>
+
             </div>
 
             {editing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+                <div className="edit-form">
                     <label>
-                        <div style={{ fontWeight: 500, marginBottom: 2 }}>Username *</div>
-                        <input value={username} onChange={e => setUsername(e.target.value)} maxLength={50} style={{ width: '100%', boxSizing: 'border-box' }} />
+                        <div className="form-label">Username *</div>
+                        <input value={username} onChange={e => setUsername(e.target.value)} maxLength={50} className="form-input" />
                     </label>
                     <label>
-                        <div style={{ fontWeight: 500, marginBottom: 2 }}>Full name</div>
-                        <input value={fullName} onChange={e => setFullName(e.target.value)} maxLength={70} style={{ width: '100%', boxSizing: 'border-box' }} />
+                        <div className="form-label">Full name</div>
+                        <input value={fullName} onChange={e => setFullName(e.target.value)} maxLength={70} className="form-input" />
                     </label>
                     <label>
-                        <div style={{ fontWeight: 500, marginBottom: 2 }}>Bio</div>
-                        <textarea value={bio} onChange={e => setBio(e.target.value)} rows={4} maxLength={500} style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical' }} />
-                        <div style={{ fontSize: '0.8rem', color: '#888', textAlign: 'right' }}>{bio.length}/500</div>
+                        <div className="form-label">Bio</div>
+                        <textarea value={bio} onChange={e => setBio(e.target.value)} rows={4} maxLength={500} className="form-textarea" />
+                        <div className="char-counter">{bio.length}/500</div>
                     </label>
-                    {saveError && <p style={{ color: 'red', margin: 0 }}>{saveError}</p>}
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {saveError && <p className="error-message">{saveError}</p>}
+                    <div className="form-buttons">
                         <button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
                         <button onClick={handleCancel} disabled={saving}>Cancel</button>
                     </div>
                 </div>
             ) : (
-                <div style={{ marginBottom: '2rem' }}>
-                    {profile?.full_name && <div style={{ marginBottom: '0.25rem' }}><span style={{ color: '#666' }}>Name: </span>{profile.full_name}</div>}
+                <div className="profile-content">
+                    {profile?.full_name && <div className="profile-detail"><span className="profile-detail-label">Name: </span>{profile.full_name}</div>}
                     {profile?.bio
-                        ? <p style={{ margin: '0 0 0.5rem', whiteSpace: 'pre-wrap' }}>{profile.bio}</p>
-                        : <p style={{ margin: '0 0 0.5rem', color: '#999' }}>No bio yet.</p>
+                        ? <p className="profile-bio">{profile.bio}</p>
+                        : <p className="profile-bio-empty">No bio yet.</p>
                     }
-                    <button onClick={() => setEditing(true)}>Edit profile</button>
+                    
                 </div>
             )}
 
-            <section style={{ marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>Submitted businesses</h2>
+            <section className="profile-section">
+                <h2 className="section-title">Submitted businesses</h2>
                 {businesses.length === 0
-                    ? <p style={{ color: '#999' }}>You haven't submitted any businesses yet.</p>
+                    ? <p className="empty-state">You haven't submitted any businesses yet.</p>
                     : businesses.map(b => {
                         const status = STATUS_LABELS[b.moderation_status] ?? { label: b.moderation_status, color: '#555' };
                         return (
-                            <div key={b.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: '0.75rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                            <div key={b.id} className="card">
+                                <div className="card-header">
                                     <div>
-                                        <strong>{b.name}</strong>
-                                        {b.category_name && <span style={{ marginLeft: '0.5rem', color: '#666', fontSize: '0.85rem' }}>{b.category_name}</span>}
+                                        <span className="business-name">{b.name}</span>
+                                        {b.category_name && <span className="category-name">{b.category_name}</span>}
                                     </div>
-                                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: status.color, whiteSpace: 'nowrap' }}>
+                                    <span className="status-badge" style={{ color: status.color }}>
                                         {status.label}
                                     </span>
                                 </div>
-                                <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                                <div className="card-meta">
                                     Submitted {new Date(b.created_at).toLocaleDateString()}
                                     {b.reviewed_at && ` · Reviewed ${new Date(b.reviewed_at).toLocaleDateString()}`}
                                 </div>
                                 {b.moderator_notes && (
-                                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', background: '#f9fafb', padding: '0.5rem', borderRadius: 4 }}>
-                                        <span style={{ fontWeight: 500 }}>Moderator note: </span>{b.moderator_notes}
+                                    <div className="moderator-note">
+                                        <span className="note-label">Moderator note: </span>{b.moderator_notes}
                                     </div>
                                 )}
                                 {b.rejection_reason && (
-                                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', background: '#fff1f2', padding: '0.5rem', borderRadius: 4 }}>
-                                        <span style={{ fontWeight: 500 }}>Rejection reason: </span>{b.rejection_reason}
+                                    <div className="rejection-reason">
+                                        <span className="note-label">Rejection reason: </span>{b.rejection_reason}
                                     </div>
                                 )}
                             </div>
@@ -252,31 +246,31 @@ export default function UserProfile() {
                 }
             </section>
 
-            <section style={{ marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>My reviews</h2>
+            <section className="profile-section">
+                <h2 className="section-title">My reviews</h2>
                 {reviews.length === 0
-                    ? <p style={{ color: '#999' }}>You haven't written any reviews yet.</p>
-                    : reviews.map(r => (
-                        <div key={r.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: '0.75rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                <Link to={`/locations/${r.location_id}`} style={{ fontWeight: 600 }}>
-                                    {r.business_name}
+                    ? <p className="empty-state">You haven't written any reviews yet.</p>
+                    : reviews.map(res => (
+                        <div key={res.id} className="card">
+                            <div className="card-header">
+                                <Link to={`/locations/${res.location_id}`} className="review-link">
+                                    {res.business_name}
                                 </Link>
-                                <span style={{ color: '#f59e0b', whiteSpace: 'nowrap' }}><Stars rating={r.rating} /></span>
+                                <span className="rating-stars"><Stars rating={res.rating} /></span>
                             </div>
-                            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '0.4rem' }}>
-                                {r.city}, {r.state} · {new Date(r.created_at).toLocaleDateString()}
-                                {r.updated_at && r.updated_at > r.created_at && ' (edited)'}
+                            <div className="card-meta">
+                                {res.city}, {res.state} · {new Date(res.created_at).toLocaleDateString()}
+                                {res.updated_at && res.updated_at > res.created_at && ' (edited)'}
                             </div>
-                            {r.title && <div style={{ fontWeight: 500, marginBottom: '0.25rem' }}>{r.title}</div>}
-                            <div style={{ fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>{r.review_text}</div>
+                            {res.title && <div className="review-title">{res.title}</div>}
+                            <div className="review-text">{res.review_text}</div>
                         </div>
                     ))
                 }
             </section>
 
             {isAdmin && (
-                <div style={{ paddingTop: '1rem', borderTop: '1px solid #eee' }}>
+                <div className="admin-section">
                     <button onClick={() => navigate('/admin/review')}>Admin: Review pending submissions</button>
                 </div>
             )}

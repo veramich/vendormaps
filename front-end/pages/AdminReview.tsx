@@ -49,6 +49,54 @@ interface PendingBusiness {
   }[];
 }
 
+interface PendingClaim {
+  id: string;
+  business_name: string;
+  email: string | null;
+  websites: string | null;
+}
+
+interface PendingEdit {
+  id: string;
+  business_name: string;
+  business_edits: Record<string, unknown> | null;
+  current_name: string;
+  current_description: string | null;
+  current_websites: string[] | null;
+  current_email: string | null;
+  current_keywords: string[] | null;
+  current_amenities: string[] | null;
+  location_edits: {
+    location_id: string;
+    location_name: string | null;
+    pending_edits: Record<string, unknown> | null;
+    current: {
+      cross_street_1: string;
+      cross_street_2: string;
+      city: string;
+      state: string;
+      phones: string[] | null;
+      location_privacy: string;
+    };
+  }[];
+}
+
+interface PendingPhoto {
+  id: string;
+  photo_url: string;
+  thumbnail_url: string | null;
+  caption: string | null;
+  created_at: string;
+  location_id: string;
+  location_name: string | null;
+  cross_street_1: string;
+  cross_street_2: string;
+  city: string;
+  state: string;
+  business_id: string;
+  business_name: string;
+}
+
 export default function AdminReview() {
   const { user, isLoading } = useUser();
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -57,6 +105,9 @@ export default function AdminReview() {
   const [error, setError] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState<{ [key: number]: string }>({});
   const [moderatorNotes, setModeratorNotes] = useState<{ [key: number]: string }>({});
+  const [claims, setClaims] = useState<PendingClaim[]>([]);
+  const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
 
   useEffect(() => {
     const checkAdminRole = async () => {
@@ -118,6 +169,117 @@ export default function AdminReview() {
       fetchPendingBusinesses();
     }
   }, [user, userRole]);
+
+  useEffect(() => {
+    const fetchPendingClaims = async () => {
+      if (!user || userRole !== 'admin') return;
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch('/api/admin/pending-claims', {
+          headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          setClaims(await response.json());
+        }
+      } catch {
+        // non-fatal — claims section just stays empty
+      }
+    };
+    if (userRole === 'admin') fetchPendingClaims();
+  }, [user, userRole]);
+
+  useEffect(() => {
+    const fetchPendingEdits = async () => {
+      if (!user || userRole !== 'admin') return;
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch('/api/admin/pending-edits', {
+          headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          setPendingEdits(await res.json());
+        }
+      } catch {
+        // non-fatal — pending edits section just stays empty
+      }
+    };
+    if (userRole === 'admin') fetchPendingEdits();
+  }, [user, userRole]);
+
+  const updateEditStatus = async (businessId: string, action: 'approve-edit' | 'reject-edit') => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/businesses/${businessId}/${action}`, {
+        method: 'POST',
+        headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setPendingEdits(prev => prev.filter(e => e.id !== businessId));
+      } else {
+        const err = await res.json();
+        setError(err.error || `Failed to ${action}`);
+      }
+    } catch {
+      setError(`Error performing ${action}`);
+    }
+  };
+
+  useEffect(() => {
+    const fetchPendingPhotos = async () => {
+      if (!user || userRole !== 'admin') return;
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch('/api/admin/pending-photos', {
+          headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          setPendingPhotos(await res.json());
+        }
+      } catch {
+        // non-fatal
+      }
+    };
+    if (userRole === 'admin') fetchPendingPhotos();
+  }, [user, userRole]);
+
+  const updatePhotoStatus = async (photoId: string, action: 'approve' | 'reject') => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/photos/${photoId}/${action}`, {
+        method: 'POST',
+        headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setPendingPhotos(prev => prev.filter(p => p.id !== photoId));
+      } else {
+        const err = await res.json();
+        setError(err.error || `Failed to ${action} photo`);
+      }
+    } catch {
+      setError(`Error performing photo ${action}`);
+    }
+  };
+
+  const updateClaimStatus = async (businessId: string, action: 'verify' | 'dismiss-claim') => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`/api/admin/businesses/${businessId}/${action}`, {
+        method: 'POST',
+        headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        setClaims(prev => prev.filter(c => c.id !== businessId));
+      } else {
+        const err = await response.json();
+        setError(err.error || `Failed to ${action}`);
+      }
+    } catch {
+      setError(`Error performing ${action}`);
+    }
+  };
 
   const updateBusinessStatus = async (businessId: number, action: 'approve' | 'reject') => {
     if (!user) return;
@@ -214,19 +376,19 @@ export default function AdminReview() {
           <p><strong>{businesses.length}</strong> pending submission(s)</p>
           
           {businesses.map(business => (
-            <div key={business.id} style={{ border: '1px solid #ccc', margin: '20px 0', padding: '20px' }}>
+            <div key={business.id} className="admin-business-card">
               <h2>{business.name}</h2>
               <p><strong>Category:</strong> {business.category_name}</p>
               <p><strong>Description:</strong> {business.description || 'None provided'}</p>
               
               {getValidImageUrl(business.logo_url) && (
-                <div style={{ margin: '10px 0' }}>
+                <div className="admin-business-logo-container">
                   <strong>Business Logo:</strong>
-                  <div style={{ marginTop: '5px' }}>
+                  <div className="admin-business-logo-image-container">
                     <img 
                       src={getValidImageUrl(business.logo_url)!} 
                       alt="Business logo" 
-                      style={{ maxWidth: '200px', maxHeight: '100px', objectFit: 'contain' }} 
+                      className="admin-business-logo"
                     />
                   </div>
                 </div>
@@ -263,7 +425,7 @@ export default function AdminReview() {
               
               <h3>Locations ({business.locations.length})</h3>
               {business.locations.map((location, index) => (
-                <div key={location.id} style={{ marginLeft: '20px', marginBottom: '10px' }}>
+                <div key={location.id} className="admin-location-section">
                   <h4>Location {index + 1} {location.location_name && `- ${location.location_name}`}</h4>
                   <p><strong>Address:</strong> {location.cross_street_1} & {location.cross_street_2}, {location.city}, {location.state}</p>
                   {location.latitude && location.longitude && (
@@ -273,9 +435,9 @@ export default function AdminReview() {
                   <p><strong>Privacy:</strong> {location.location_privacy}</p>
                   
                   {location.images && location.images.length > 0 && (
-                    <div style={{ margin: '10px 0' }}>
+                    <div className="admin-location-images-container">
                       <strong>Location Images ({location.images.length}):</strong>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '5px' }}>
+                      <div className="admin-location-images-grid">
                         {location.images.map(image => {
                           const imageUrl = getValidImageUrl(image.thumbnail_url || image.photo_url);
                           if (!imageUrl) return null;
@@ -285,10 +447,10 @@ export default function AdminReview() {
                               <img 
                                 src={imageUrl} 
                                 alt={image.caption || 'Location image'} 
-                                style={{ width: '100px', height: '100px', objectFit: 'cover', border: '1px solid #ddd' }} 
+                                className="admin-location-image"
                               />
                               {image.caption && (
-                                <div style={{ fontSize: '12px', maxWidth: '100px', textAlign: 'center' }}>
+                                <div className="admin-location-image-caption">
                                   {image.caption}
                                 </div>
                               )}
@@ -309,7 +471,7 @@ export default function AdminReview() {
               ))}
               
               {/* Moderator Notes */}
-              <div style={{ marginTop: '20px' }}>
+              <div className="admin-moderator-notes">
                 <label>
                   <strong>Moderator Notes (optional):</strong>
                   <br />
@@ -324,7 +486,7 @@ export default function AdminReview() {
               </div>
               
               {/* Rejection Reason */}
-              <div style={{ marginTop: '10px' }}>
+              <div className="admin-rejection-reason">
                 <label>
                   <strong>Rejection Reason (required if rejecting):</strong>
                   <br />
@@ -338,35 +500,203 @@ export default function AdminReview() {
                 </label>
               </div>
               
-              <div style={{ marginTop: '20px' }}>
+              <div className="admin-actions">
                 <button 
                   onClick={() => updateBusinessStatus(business.id, 'approve')}
-                  style={{ 
-                    backgroundColor: 'green', 
-                    color: 'white', 
-                    padding: '10px 20px', 
-                    marginRight: '10px',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="admin-approve-button"
                 >
                   ✅ Approve
                 </button>
                 <button 
                   onClick={() => updateBusinessStatus(business.id, 'reject')}
-                  style={{ 
-                    backgroundColor: 'red', 
-                    color: 'white', 
-                    padding: '10px 20px',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="admin-reject-button"
                 >
                   ❌ Reject
                 </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+      <hr className="admin-section-divider" />
+      <h1>Pending Ownership Claims</h1>
+      <p>Review requests from users claiming to own an existing business.</p>
+
+      {claims.length === 0 ? (
+        <p>No pending claims.</p>
+      ) : (
+        <div>
+          <p><strong>{claims.length}</strong> pending claim(s)</p>
+          {claims.map(claim => (
+            <div key={claim.id} className="admin-claim-card">
+              <h2>{claim.business_name}</h2>
+              {claim.email && <p><strong>Email:</strong> {claim.email}</p>}
+              {claim.websites && <p><strong>Website:</strong> {claim.websites}</p>}
+              {!claim.email && !claim.websites && <p>No contact info on file.</p>}
+
+              <div className="admin-claim-actions">
+                <button
+                  onClick={() => updateClaimStatus(claim.id, 'verify')}
+                  className="admin-approve-button"
+                >
+                  ✅ Verify
+                </button>
+                <button
+                  onClick={() => updateClaimStatus(claim.id, 'dismiss-claim')}
+                  className="admin-reject-button"
+                >
+                  ❌ Dismiss
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <hr className="admin-section-divider" />
+      <h1>Pending Business Edits</h1>
+      <p>Review proposed edits submitted by users. Approving will apply the changes to the live listing.</p>
+
+      {pendingEdits.length === 0 ? (
+        <p>No pending edits.</p>
+      ) : (
+        <div>
+          <p><strong>{pendingEdits.length}</strong> pending edit(s)</p>
+          {pendingEdits.map(edit => (
+            <div key={edit.id} className="admin-edit-card">
+              <h2>{edit.business_name}</h2>
+
+              {edit.business_edits && Object.keys(edit.business_edits).length > 0 && (
+                <div>
+                  <h3>Business Field Changes</h3>
+                  <table className="admin-comparison-table">
+                    <thead>
+                      <tr>
+                        <th className="admin-table-header">Field</th>
+                        <th className="admin-table-header">Current</th>
+                        <th className="admin-table-header">Proposed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(edit.business_edits).map(([field, proposed]) => {
+                        const currentMap: Record<string, unknown> = {
+                          name: edit.current_name,
+                          description: edit.current_description,
+                          websites: edit.current_websites,
+                          email: edit.current_email,
+                          keywords: edit.current_keywords,
+                          amenities: edit.current_amenities,
+                        };
+                        const current = currentMap[field];
+                        const fmt = (v: unknown) => Array.isArray(v) ? v.join(', ') : String(v ?? '');
+                        return (
+                          <tr key={field}>
+                            <td className="admin-table-cell">{field}</td>
+                            <td className="admin-table-cell-current">{fmt(current)}</td>
+                            <td className="admin-table-cell-proposed">{fmt(proposed)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {edit.location_edits.filter(l => l.pending_edits && Object.keys(l.pending_edits).length > 0).length > 0 && (
+                <div className="admin-location-changes">
+                  <h3>Location Changes</h3>
+                  {edit.location_edits
+                    .filter(l => l.pending_edits && Object.keys(l.pending_edits).length > 0)
+                    .map(loc => (
+                      <div key={loc.location_id} className="admin-location-change-section">
+                        <h4>{loc.location_name ?? 'Unnamed Location'}</h4>
+                        <table className="admin-comparison-table">
+                          <thead>
+                            <tr>
+                              <th className="admin-table-header">Field</th>
+                              <th className="admin-table-header">Current</th>
+                              <th className="admin-table-header">Proposed</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(loc.pending_edits!).map(([field, proposed]) => {
+                              const currentMap: Record<string, unknown> = loc.current as Record<string, unknown>;
+                              const current = currentMap[field];
+                              const fmt = (v: unknown) => Array.isArray(v) ? v.join(', ') : String(v ?? '');
+                              return (
+                                <tr key={field}>
+                                  <td className="admin-table-cell">{field}</td>
+                                  <td className="admin-table-cell-current">{fmt(current)}</td>
+                                  <td className="admin-table-cell-proposed">{fmt(proposed)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              <div className="admin-edit-actions">
+                <button
+                  onClick={() => updateEditStatus(edit.id, 'approve-edit')}
+                  className="admin-approve-button"
+                >
+                  ✅ Approve Edit
+                </button>
+                <button
+                  onClick={() => updateEditStatus(edit.id, 'reject-edit')}
+                  className="admin-reject-button"
+                >
+                  ❌ Reject Edit
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <hr className="admin-section-divider" />
+      <h1>Pending Photos</h1>
+      <p>Review photos submitted by users. Approving makes them visible on the listing.</p>
+
+      {pendingPhotos.length === 0 ? (
+        <p>No pending photos.</p>
+      ) : (
+        <div>
+          <p><strong>{pendingPhotos.length}</strong> pending photo(s)</p>
+          <div className="admin-photos-grid">
+            {pendingPhotos.map(photo => (
+              <div key={photo.id} className="admin-photo-card">
+                <img
+                  src={photo.thumbnail_url ?? photo.photo_url}
+                  alt={photo.caption ?? 'Pending photo'}
+                  className="admin-photo-image"
+                />
+                {photo.caption && <p className="admin-photo-caption">{photo.caption}</p>}
+                <p className="admin-photo-business-name">
+                  <strong>{photo.business_name}</strong>
+                </p>
+                <p className="admin-photo-location">
+                  {photo.location_name ? `${photo.location_name} — ` : ''}{photo.cross_street_1} & {photo.cross_street_2}, {photo.city}, {photo.state}
+                </p>
+                <div className="admin-photo-actions">
+                  <button
+                    onClick={() => updatePhotoStatus(photo.id, 'approve')}
+                    className="admin-photo-approve-button"
+                  >
+                    ✅ Approve
+                  </button>
+                  <button
+                    onClick={() => updatePhotoStatus(photo.id, 'reject')}
+                    className="admin-photo-reject-button"
+                  >
+                    ❌ Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

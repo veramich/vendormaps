@@ -1,4 +1,3 @@
-//Commented Out Reverse Geocoding since it caused some bugs. Can revisit adding this back later with a more robust implementation if desired.
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import useUser from "../src/useUser";
@@ -25,7 +24,7 @@ interface DayHours {
 }
 
 type DayIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-type BusinessHours = { always_open: boolean } & Record<DayIndex, DayHours>;
+type BusinessHours = { always_open: boolean; weekly_hours_on_website: boolean } & Record<DayIndex, DayHours>;
 
 interface Location {
   id: string;
@@ -80,6 +79,7 @@ const DEFAULT_DAY_HOURS = (): DayHours => ({
 
 const DEFAULT_HOURS = (): BusinessHours => ({
   always_open: false,
+  weekly_hours_on_website: false,
   0: { closed: true, open_24_hours: false, periods: [] },                 // Sunday
   1: DEFAULT_DAY_HOURS(),                                                  // Monday
   2: DEFAULT_DAY_HOURS(),                                                  // Tuesday
@@ -116,13 +116,25 @@ const US_STATES = [
   "TX","UT","VT","VA","WA","WV","WI","WY",
 ]; 
 
-const COMMON_AMENITIES = [
-  "Home Based", "Sidewalk Based", "Food Truck", "Farmer's Market", "Pop Ups", "Catering", "Private Events", "Farmer's Market Only", "Pop Up Only", "Catering Only",
-  "DM To Order", "Text To Order", "Call To Order", "Order Online", "Walk-Up Orders", "Order Ahead", "Pre-Order Required", "No Walk-Ins", "Time-Slot Reservations",
-  "Cash Only", "Cash Preferred", "Tap To Pay", "Credit Cards", "Cash App", "Zelle", "Venmo", "PayPal", "Apple Cash", "Google Pay", "Samsung Pay",
-  "Pickup", "Curbside Pickup", "Delivery", "Shipping", "US Shipping", "International Shipping", "Street Parking", "Parking Lot", "Wheelchair Accessible", "Outdoor Seating", "Restrooms",
-  "Vegan Options", "Vegetarian Options", "Gluten-Free Options", "Halal Options", "Kosher Options", "Locally Sourced Ingredients", "Organic Options", "Late Night"
-];
+const COMMON_AMENITIES = {
+  "Business Types": [
+    "Home Based", "Sidewalk Based", "Food Truck", "Farmer's Market", "Pop Ups", "Catering", "Private Events", "Farmer's Market Only"
+  ],
+  "Ordering Methods": [
+    "DM To Order", "Text To Order", "Call To Order", "Order Online", "Walk-Up Orders", "Order Ahead", "Pre-Order Required", "No Walk-Ins", "Time-Slot Reservations"
+  ],
+  "Payment Options": [
+    "Cash Only", "Cash Preferred", "Tap To Pay", "Credit Cards", "Cash App", "Zelle", "Venmo"
+  ],
+  "Dietary Options": [
+    "Vegan Options", "Vegetarian Options", "Gluten-Free Options", "Halal Options", "Kosher Options", "Locally Sourced Ingredients", "Organic Options"
+  ],
+  "Accessibility": [
+    "Curbside Pickup", "Delivery", "US Shipping", "International Shipping", "Street Parking", "Parking Lot", "Wheelchair Accessible", "Outdoor Seating", "Restrooms"
+  ]
+};
+
+const ALL_COMMON_AMENITIES = Object.values(COMMON_AMENITIES).flat();
 
 export default function AddBusiness() {
   const [searchParams] = useSearchParams();
@@ -144,25 +156,12 @@ export default function AddBusiness() {
   });
   const [keywordInput, setKeywordInput] = useState("");
   const [amenityInput, setAmenityInput] = useState("");
+  const [websiteInput, setWebsiteInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outsideUS, setOutsideUS] = useState(false);
-  const [geolocating, setGeolocating] = useState(false);
-  // const [geocodeLookupIndex, setGeocodeLookupIndex] = useState<number | null>(null);
-  // const [geocodeError, setGeocodeError] = useState<string | null>(null);
-  // const geocodeTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
-  
-  // Restore form draft saved before navigating to the map to pick a location
-  useEffect(() => {
-    const draft = sessionStorage.getItem('addBusinessDraft');
-    if (draft) {
-      try {
-        setForm(JSON.parse(draft));
-      } catch {}
-      sessionStorage.removeItem('addBusinessDraft');
-    }
-  }, []);
+
 
   const lat = searchParams.get("lat");
   const lng = searchParams.get("lng")
@@ -182,97 +181,18 @@ export default function AddBusiness() {
               setOutsideUS(true);
             }
           })
-          .catch(() => {
-            setOutsideUS(true);
+          .catch((error) => {
+            console.warn('Location validation failed:', error);
           });
       }
     }
   }, [lat, lng]);
 
-  const reverseGeocode = async (lat: number, lng: number) => {
-    try {
-      setGeolocating(true);
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch address information');
-      }
-      
-      const data = await response.json();
-      return data;
-    } catch (err) {
-      console.error('Reverse geocoding error:', err);
-      return null;
-    } finally {
-      setGeolocating(false);
-    }
-  };
 
-  const parseAddressData = (data: any) => {
-    if (!data || !data.address) return null;
-
-    const address = data.address;
-    
-    const street1 = address.road || address.street || address.highway || 
-                   address.pedestrian || address.footway || '';
-    
-    let street2 = '';
-    
-    const displayName = data.display_name || '';
-    const nameParts = displayName.split(',').map((part: string) => part.trim());
-    
-    const streetKeywords = ['Street', 'St', 'Avenue', 'Ave', 'Road', 'Rd', 'Boulevard', 'Blvd', 
-                           'Drive', 'Dr', 'Lane', 'Ln', 'Way', 'Circle', 'Cir'];
-    
-    const potentialStreets = nameParts.filter((part: string) => 
-      streetKeywords.some(keyword => part.includes(keyword)) && part !== street1
-    );
-    
-    if (potentialStreets.length > 0) {
-      street2 = potentialStreets[0];
-    } else {
-      street2 = address.neighbourhood || address.suburb || address.hamlet || 
-               `Near ${street1}` || 'Cross Street';
-    }
-    
-    const city = address.city || address.town || address.village || 
-                address.municipality || address.county || '';
-    
-    const state = address.state || address.province || address.region || '';
-    
-    const convertStateToAbbreviation = (stateName: string): string => {
-      const stateMap: { [key: string]: string } = {
-        'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR',
-        'California': 'CA', 'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE',
-        'Florida': 'FL', 'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID',
-        'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA', 'Kansas': 'KS',
-        'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
-        'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS',
-        'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV',
-        'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
-        'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK',
-        'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
-        'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT',
-        'Vermont': 'VT', 'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV',
-        'Wisconsin': 'WI', 'Wyoming': 'WY'
-      };
-      
-      return stateMap[stateName] || stateName;
-    };
-
-    return {
-      cross_street_1: street1,
-      cross_street_2: street2,
-      city: city,
-      state: convertStateToAbbreviation(state)
-    };
-  };
 
   useEffect(() => {
     fetch("/api/categories")
-      .then((r) => r.json())
+      .then((res) => res.json())
       .then(setCategories)
       .catch(console.error);
   }, []);
@@ -300,7 +220,6 @@ export default function AddBusiness() {
   useEffect(() => {
     if (selectedLocation && form.locations.length > 0 && !form.locations[0].latitude) {
       const autoFillAddress = async () => {
-        // Snap click to nearest intersection for privacy (map pins show intersection unless owner chooses exact)
         let snappedLat = selectedLocation.lat;
         let snappedLng = selectedLocation.lng;
         let originalLat: number | null = null;
@@ -329,7 +248,6 @@ export default function AddBusiness() {
             snapDistanceMeters = snapData.snap_distance_meters ?? null;
           }
         } catch (_) {
-          // Fallback: use click as pin (no snap)
           originalLat = selectedLocation.lat;
           originalLng = selectedLocation.lng;
         }
@@ -345,27 +263,7 @@ export default function AddBusiness() {
           snap_distance_meters: snapDistanceMeters,
         });
 
-        // Reverse geocode the snapped intersection to get cross street names (so label matches pin)
-        const geocodeData = await reverseGeocode(snappedLat, snappedLng);
-        if (geocodeData) {
-          const addressInfo = parseAddressData(geocodeData);
-          if (addressInfo) {
-            updateLocation(0, {
-              ...form.locations[0],
-              latitude: snappedLat,
-              longitude: snappedLng,
-              original_latitude: originalLat,
-              original_longitude: originalLng,
-              location_snapped: locationSnapped,
-              geocode_source: geocodeSource,
-              snap_distance_meters: snapDistanceMeters,
-              cross_street_1: addressInfo.cross_street_1 || form.locations[0].cross_street_1,
-              cross_street_2: addressInfo.cross_street_2 || form.locations[0].cross_street_2,
-              city: addressInfo.city || form.locations[0].city,
-              state: addressInfo.state || form.locations[0].state,
-            });
-          }
-        }
+
       };
 
       autoFillAddress();
@@ -394,6 +292,21 @@ export default function AddBusiness() {
 
   const removeAmenity = (amenity: string) => {
     setForm({ ...form, amenities: form.amenities.filter((a) => a !== amenity) });
+  };
+
+  const addWebsite = () => {
+    let website = websiteInput.trim();
+    if (website && !form.websites.includes(website)) {
+      if (!/^https?:\/\//i.test(website)) {
+        website = `https://${website}`;
+      }
+      setForm({ ...form, websites: [...form.websites, website] });
+      setWebsiteInput("");
+    }
+  };
+
+  const removeWebsite = (index: number) => {
+    setForm({ ...form, websites: form.websites.filter((_, i) => i !== index) });
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -435,13 +348,6 @@ export default function AddBusiness() {
     const locations = [...form.locations];
     locations[index] = loc;
     setForm({ ...form, locations });
-  };
-
-  const removeLocation = (index: number) => {
-    if (form.locations.length > 1) {
-      const locations = form.locations.filter((_, i) => i !== index);
-      setForm({ ...form, locations });
-    }
   };
 
   const updateLocationHours = (locationIndex: number, hours: BusinessHours) => {
@@ -596,8 +502,6 @@ export default function AddBusiness() {
         Add a business here! All submissions are reviewed before 
         being published. Please note that businesses must be located in the United States.
       </p>
-      
-      {geolocating && <p><em>Looking up address from map location…</em></p>}
 
       {error && (
         <div>
@@ -649,42 +553,60 @@ export default function AddBusiness() {
 
           <div>
             <strong>Websites</strong>
-            {form.websites.map((url, i) => (
-              <div key={i}>
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => {
-                    const updated = [...form.websites];
-                    updated[i] = e.target.value;
-                    setForm({ ...form, websites: updated });
-                  }}
-                  onBlur={(e) => {
-                    const val = e.target.value.trim();
-                    if (val && !/^https?:\/\//i.test(val)) {
-                      const updated = [...form.websites];
-                      updated[i] = `https://${val}`;
-                      setForm({ ...form, websites: updated });
-                    }
-                  }}
-                  pattern="https?://[^\s]+\.[a-zA-Z]{2,}(/[^\s]*)?"
-                  title="URL must include a valid suffix (e.g. .com, .co, .org)"
-                  placeholder="https://example.com"
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, websites: form.websites.filter((_, j) => j !== i) })}
-                >
-                  Remove
-                </button>
+            
+            <label>
+              Add website URL
+              <input
+                type="url"
+                value={websiteInput}
+                onChange={(e) => setWebsiteInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addWebsite();
+                  }
+                }}
+                placeholder="https://example.com"
+              />
+              <button type="button" onClick={addWebsite}>
+                Add Another Website
+              </button>
+            </label>
+
+            {form.websites.length > 0 && (
+              <div>
+                <strong>Current websites:</strong>
+                {form.websites.map((url, i) => (
+                  <div key={i}>
+                    <input
+                      type="url"
+                      value={url}
+                      onChange={(e) => {
+                        const updated = [...form.websites];
+                        updated[i] = e.target.value;
+                        setForm({ ...form, websites: updated });
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val && !/^https?:\/\//i.test(val)) {
+                          const updated = [...form.websites];
+                          updated[i] = `https://${val}`;
+                          setForm({ ...form, websites: updated });
+                        }
+                      }}
+                      pattern="https?://[^\s]+\.[a-zA-Z]{2,}(/[^\s]*)?"
+                      title="URL must include a valid suffix (e.g. .com, .co, .org)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeWebsite(i)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setForm({ ...form, websites: [...form.websites, ""] })}
-            >
-              Add Website
-            </button>
+            )}
           </div>
 
           <label>
@@ -804,29 +726,47 @@ export default function AddBusiness() {
           <div>
             <strong>Common amenities:</strong>
             <p><small>Select all that apply. The more you select, the higher chance of attracting customers.</small></p>
-            <div>
-              {COMMON_AMENITIES.map((amenity) => (
-                <label key={amenity} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginRight: '1rem', marginBottom: '0.4rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={form.amenities.includes(amenity)}
-                    onChange={(e) => {
-                      if (e.target.checked) addAmenity(amenity);
-                      else removeAmenity(amenity);
-                    }}
-                    disabled={!form.amenities.includes(amenity) && form.amenities.length >= 20}
-                  />
-                  {amenity}
-                </label>
+            <div className="amenity-sections">
+              {Object.entries(COMMON_AMENITIES).map(([sectionName, amenities]) => (
+                <div key={sectionName} className="amenity-section">
+                  <div className="amenity-section-header">{sectionName}</div>
+                  <div className="amenity-section-grid">
+                    {amenities.map((amenity) => {
+                      const isChecked = form.amenities.includes(amenity);
+                      const isDisabled = !isChecked && form.amenities.length >= 20;
+                      return (
+                        <label 
+                          key={amenity} 
+                          className={`amenity-checkbox-item ${
+                            isChecked ? 'checked' : ''
+                          } ${
+                            isDisabled ? 'disabled' : ''
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) addAmenity(amenity);
+                              else removeAmenity(amenity);
+                            }}
+                            disabled={isDisabled}
+                          />
+                          <span>{amenity}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
 
-          {form.amenities.filter(a => !COMMON_AMENITIES.includes(a)).length > 0 && (
+          {form.amenities.filter(a => !ALL_COMMON_AMENITIES.includes(a)).length > 0 && (
             <div>
               <strong>Custom amenities:</strong>
               <div>
-                {form.amenities.filter(a => !COMMON_AMENITIES.includes(a)).map((amenity) => (
+                {form.amenities.filter(a => !ALL_COMMON_AMENITIES.includes(a)).map((amenity) => (
                   <span key={amenity}>
                     {amenity} <button type="button" onClick={() => removeAmenity(amenity)}>×</button>
                   </span>
@@ -842,12 +782,6 @@ export default function AddBusiness() {
           {form.locations.map((loc, locationIndex) => (
             <div key={loc.id}>
               <h3>Location {locationIndex + 1}</h3>
-
-              {form.locations.length > 1 && (
-                <button type="button" onClick={() => removeLocation(locationIndex)}>
-                  Remove This Location
-                </button>
-              )}
 
               <label>
                 Location Name (If multiple locations)
@@ -871,33 +805,6 @@ export default function AddBusiness() {
                 </div>
               )}
 
-              {/* {!loc.latitude && !loc.longitude && (
-                <div>
-                  {geocodeLookupIndex === locationIndex
-                    ? <em>Looking up coordinates…</em>
-                    : (
-                      <>
-                        <em>No coordinates yet. Fill in the address below and coordinates will be looked up automatically.</em>
-                        {" "}
-                      </>
-                    )
-                  }
-                  {geocodeError && geocodeLookupIndex === null && (
-                    <>
-                      <span style={{ color: "red", marginLeft: "8px" }}>{geocodeError}</span>
-                      {" "}
-                      <button
-                        type="button"
-                        onClick={() => lookupCoordinatesFromAddress(locationIndex)}
-                        disabled={geocodeLookupIndex !== null || !loc.cross_street_1?.trim() || !loc.cross_street_2?.trim() || !loc.city?.trim() || !loc.state}
-                      >
-                        Retry
-                      </button>
-                    </>
-                  )}
-                </div>
-              )} */}
-
               <label>
                 Cross Street 1 *
                 <input
@@ -906,7 +813,6 @@ export default function AddBusiness() {
                   onChange={(e) => {
                     const updated = { ...loc, cross_street_1: e.target.value };
                     updateLocation(locationIndex, updated);
-                    // scheduleAutoGeocode(locationIndex, updated);
                   }}
                   required
                   placeholder="e.g. Main St"
@@ -921,7 +827,6 @@ export default function AddBusiness() {
                   onChange={(e) => {
                     const updated = { ...loc, cross_street_2: e.target.value };
                     updateLocation(locationIndex, updated);
-                    // scheduleAutoGeocode(locationIndex, updated);
                   }}
                   required
                   placeholder="e.g. First Ave"
@@ -936,7 +841,6 @@ export default function AddBusiness() {
                   onChange={(e) => {
                     const updated = { ...loc, city: e.target.value };
                     updateLocation(locationIndex, updated);
-                    // scheduleAutoGeocode(locationIndex, updated);
                   }}
                   required
                   placeholder="e.g. Los Angeles"
@@ -950,7 +854,6 @@ export default function AddBusiness() {
                   onChange={(e) => {
                     const updated = { ...loc, state: e.target.value };
                     updateLocation(locationIndex, updated);
-                    // scheduleAutoGeocode(locationIndex, updated);
                   }}
                   required
                 >
@@ -992,119 +895,145 @@ export default function AddBusiness() {
                 </button>
               </div>
  
-              <label>
-                Location Privacy
-                <select
-                  value={loc.location_privacy}
-                  onChange={(e) => updateLocation(locationIndex, { ...loc, location_privacy: e.target.value as any })}
-                >
-                  <option value="intersection">Show nearest intersection (recommended for privacy)</option>
-                  <option value="exact">Show exact location (where you clicked)</option>
-                  <option value="grid">Show general area only</option>
-                </select>
-              </label>
+              {form.is_owner && (
+                <label>
+                  Location Privacy
+                  <select
+                    value={loc.location_privacy}
+                    onChange={(e) => updateLocation(locationIndex, { ...loc, location_privacy: e.target.value as any })}
+                  >
+                    <option value="intersection">Show nearest intersection (recommended for privacy)</option>
+                    <option value="exact">Show exact location (where you clicked)</option>
+                    <option value="grid">Show general area only</option>
+                  </select>
+                </label>
+              )}
 
               <fieldset>
                 <legend>Hours for {loc.location_name || `Location ${locationIndex + 1}`}</legend>
+                
+                <div className="hours-form">
+                  <div className="hours-form-header">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={loc.business_hours.always_open}
+                        onChange={(e) =>
+                          updateLocationHours(locationIndex, { ...loc.business_hours, always_open: e.target.checked })
+                        }
+                      />
+                       Open 24/7
+                    </label>
+                    
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={loc.business_hours.weekly_hours_on_website}
+                        onChange={(e) =>
+                          updateLocationHours(locationIndex, { ...loc.business_hours, weekly_hours_on_website: e.target.checked })
+                        }
+                      />
+                       Hours posted weekly on website
+                    </label>
+                  </div>
 
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={loc.business_hours.always_open}
-                    onChange={(e) =>
-                      updateLocationHours(locationIndex, { ...loc.business_hours, always_open: e.target.checked })
-                    }
-                  />
-                  Open 24/7
-                </label>
+                  {!loc.business_hours.always_open && (
+                    <div className="days-grid">
+                      {DAYS.map((day) => {
+                        const dayHours = loc.business_hours[day] as DayHours;
+                        return (
+                          <div key={day} className="day-hours-container">
+                            <div className="day-header">{DAY_NAMES[day]}</div>
 
-                {!loc.business_hours.always_open && (
-                  <div>
-                    {DAYS.map((day) => {
-                      const dayHours = loc.business_hours[day] as DayHours;
-                      return (
-                        <div key={day}>
-                          <h4>{DAY_NAMES[day]}</h4>
-
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={dayHours.closed}
-                              onChange={(e) => updateDayHours(locationIndex, day, { closed: e.target.checked, periods: e.target.checked ? [] : [DEFAULT_HOUR_PERIOD()] })}
-                            />
-                            Closed
-                          </label>
-
-                          {!dayHours.closed && (
-                            <>
+                            <div className="day-controls">
                               <label>
                                 <input
                                   type="checkbox"
-                                  checked={dayHours.open_24_hours}
-                                  onChange={(e) => updateDayHours(locationIndex, day, { open_24_hours: e.target.checked, periods: e.target.checked ? [] : [DEFAULT_HOUR_PERIOD()] })}
+                                  checked={dayHours.closed}
+                                  onChange={(e) => updateDayHours(locationIndex, day, { closed: e.target.checked, periods: e.target.checked ? [] : [DEFAULT_HOUR_PERIOD()] })}
                                 />
-                                24 hours
+                                Closed
                               </label>
 
-                              {!dayHours.open_24_hours && (
-                                <div>
-                                  {dayHours.periods.map((period, periodIndex) => (
-                                    <div key={period.id}>
-                                      <strong>Hours {periodIndex + 1}:</strong>
-                                      
-                                      <label>
-                                        Open:
+                              {!dayHours.closed && (
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={dayHours.open_24_hours}
+                                    onChange={(e) => updateDayHours(locationIndex, day, { open_24_hours: e.target.checked, periods: e.target.checked ? [] : [DEFAULT_HOUR_PERIOD()] })}
+                                  />
+                                  24 hours
+                                </label>
+                              )}
+                            </div>
+
+                            {!dayHours.closed && !dayHours.open_24_hours && (
+                              <div className="time-periods">
+                                {dayHours.periods.map((period, periodIndex) => (
+                                  <div key={period.id} className="hour-period">
+                                    {dayHours.periods.length > 1 && (
+                                      <div className="period-header">Hours {periodIndex + 1}</div>
+                                    )}
+                                    
+                                    <div className="time-inputs-group">
+                                      <div className="time-input-wrapper">
+                                        <div className="time-input-label">Open</div>
                                         <input
+                                          className="time-input"
                                           type="time"
                                           value={period.open}
                                           onChange={(e) => updateHourPeriod(locationIndex, day, period.id, { open: e.target.value })}
                                         />
-                                      </label>
+                                      </div>
 
-                                      <label>
-                                        Close:
+                                      <div className="time-input-wrapper">
+                                        <div className="time-input-label">Close</div>
                                         <input
+                                          className="time-input"
                                           type="time"
                                           value={period.close}
                                           onChange={(e) => updateHourPeriod(locationIndex, day, period.id, { close: e.target.value })}
                                         />
-                                      </label>
+                                      </div>
+                                    </div>
 
-                                      <label>
-                                        <input
-                                          type="checkbox"
-                                          checked={period.closes_next_day}
-                                          onChange={(e) => updateHourPeriod(locationIndex, day, period.id, { closes_next_day: e.target.checked })}
-                                        />
-                                        Closes next day (e.g. closes at 2 AM)
-                                      </label>
+                                    <div className="closes-next-day">
+                                      <input
+                                        type="checkbox"
+                                        checked={period.closes_next_day}
+                                        onChange={(e) => updateHourPeriod(locationIndex, day, period.id, { closes_next_day: e.target.checked })}
+                                      />
+                                      <span>Closes next day (e.g. closes at 2 AM)</span>
+                                    </div>
 
-                                      {dayHours.periods.length > 1 && (
+                                    {dayHours.periods.length > 1 && (
+                                      <div className="period-actions">
                                         <button 
                                           type="button" 
                                           onClick={() => removeHourPeriod(locationIndex, day, period.id)}
                                         >
                                           Remove these hours
                                         </button>
-                                      )}
-                                    </div>
-                                  ))}
-                                  
-                                  <button 
-                                    type="button" 
-                                    onClick={() => addHourPeriod(locationIndex, day)}
-                                  >
-                                    Add another set of hours for {DAY_NAMES[day]}
-                                  </button>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                                
+                                <button 
+                                  type="button" 
+                                  className="add-period-btn"
+                                  onClick={() => addHourPeriod(locationIndex, day)}
+                                >
+                                  Add another set of hours for {DAY_NAMES[day]}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </fieldset>
 
               <fieldset>
@@ -1141,9 +1070,10 @@ export default function AddBusiness() {
 
           {form.is_chain && (
             <button type="button" onClick={addLocation}>
-              Add Another Location
+              Add Another Location for this Business
             </button>
           )}
+         
         </fieldset>
 
         <button type="submit" disabled={submitting}>

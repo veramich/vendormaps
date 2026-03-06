@@ -10,6 +10,7 @@ import NotFoundPage from '../pages/NotFoundPage';
 import LoginPage from '../pages/LoginPage';
 import CreateAccountPage from '../pages/CreateAccountPage';
 import AdminReview from '../pages/AdminReview';
+import EditBusiness from '../pages/EditBusiness';
 
 const routes = [{
   path: '/',
@@ -39,6 +40,9 @@ const routes = [{
   },{
     path: '/admin/review',
     element: <AdminReview />
+  },{
+    path: '/businesses/:id/edit',
+    element: <EditBusiness />
   }]
 }]
 
