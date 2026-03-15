@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import useUser from "../src/useUser";
-import { generateUUID, capitalizeWords, configureLeafletDefaultIcon, normalize } from "../src/utils";
+import { generateUUID, capitalizeWords, configureLeafletDefaultIcon, normalize, API_BASE } from "../src/utils";
 import { US_STATES } from "../src/constants";
 import { HoursEditor } from "../src/components/HoursEditor";
 import type { BusinessHours } from "../src/components/HoursEditor";
@@ -122,7 +122,7 @@ export default function AddBusiness() {
   const [step, setStep] = useState<number>(1);
 
   useEffect(() => {
-    fetch("/api/categories")
+    fetch(`${API_BASE}/api/categories`)
       .then((res) => res.json() as Promise<Category[]>)
       .then(setCategories)
       .catch(console.error);
@@ -229,7 +229,7 @@ export default function AddBusiness() {
         params.set('zip', loc.zip.trim());
       }
       
-      const res = await fetch(`/api/geocode?${params}`);
+      const res = await fetch(`${API_BASE}/api/geocode?${params}`);
       const data = await res.json() as GeocodeResponse;
       if (!res.ok) throw new Error(data.error ?? "Could not find location");
       
@@ -349,7 +349,7 @@ export default function AddBusiness() {
         });
       });
 
-      const response = await fetch("/api/businesses", {
+      const response = await fetch(`${API_BASE}/api/businesses`, {
         method: "POST",
         headers: {
           'authtoken': token,

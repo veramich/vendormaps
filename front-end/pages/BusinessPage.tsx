@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useUser from '../src/useUser';
-import { toStringArray, MapsChooser, getTodayDay, isOpenNow, formatBusinessHours, renderStars } from '../src/utils';
+import { toStringArray, MapsChooser, getTodayDay, isOpenNow, formatBusinessHours, renderStars, API_BASE } from '../src/utils';
 
 interface LocationPhoto {
     id: string;
@@ -119,7 +119,7 @@ export default function BusinessPage() {
 
         let mounted = true;
 
-        fetch(`/api/locations/${id}`)
+        fetch(`${API_BASE}/api/locations/${id}`)
             .then((response) => {
                 if (!response.ok) {
                     if (response.status === 404) {
@@ -159,7 +159,7 @@ export default function BusinessPage() {
         let mounted = true;
 
         setReviewsLoading(true);
-        fetch(`/api/locations/${id}/reviews`)
+        fetch(`${API_BASE}/api/locations/${id}/reviews`)
             .then((response) => {
                 if (!response.ok) {
                     throw new Error(`Server error: ${response.status}`);
@@ -198,7 +198,7 @@ export default function BusinessPage() {
 
         try {
             const token = await user.getIdToken();
-            const response = await fetch(`/api/locations/${id}/reviews`, {
+            const response = await fetch(`${API_BASE}/api/locations/${id}/reviews`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -259,7 +259,7 @@ export default function BusinessPage() {
 
         try {
             const token = await user.getIdToken();
-            const response = await fetch(`/api/locations/${id}/reviews/${reviewId}/helpful`, {
+            const response = await fetch(`${API_BASE}/api/locations/${id}/reviews/${reviewId}/helpful`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -337,7 +337,7 @@ export default function BusinessPage() {
             }
 
             const token = await user.getIdToken();
-            const response = await fetch(`/api/locations/${id}/reviews/${reviewId}`, {
+            const response = await fetch(`${API_BASE}/api/locations/${id}/reviews/${reviewId}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -404,7 +404,7 @@ export default function BusinessPage() {
             }
 
             const token = await user.getIdToken();
-            const response = await fetch(`/api/locations/${id}/reviews/${reviewId}`, {
+            const response = await fetch(`${API_BASE}/api/locations/${id}/reviews/${reviewId}`, {
                 method: 'DELETE',
                 headers: {
                     'authtoken': token,
@@ -451,7 +451,7 @@ export default function BusinessPage() {
         setClaimMessage(null);
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`/api/businesses/${business.id}/claim`, {
+            const res = await fetch(`${API_BASE}/api/businesses/${business.id}/claim`, {
                 method: 'POST',
                 headers: { authtoken: token },
             });

@@ -6,7 +6,7 @@ import L from 'leaflet';
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
-import { toStringArray, normalize, isZipCode, haversineMiles, configureLeafletDefaultIcon, MapsChooser, getOpenDaysFromHours } from '../src/utils';
+import { toStringArray, normalize, isZipCode, haversineMiles, configureLeafletDefaultIcon, MapsChooser, getOpenDaysFromHours, API_BASE } from '../src/utils';
 import { DAY_OPTIONS, RADIUS_OPTIONS } from '../src/constants';
 
 configureLeafletDefaultIcon();
@@ -144,9 +144,9 @@ export default function HomePage({
     setLoading(true);
     setError(null);
     Promise.all([
-      fetch("/api/locations"),
-      fetch("/api/businesses"),
-      fetch("/api/ratings"),
+      fetch(`${API_BASE}/api/locations`),
+      fetch(`${API_BASE}/api/businesses`),
+      fetch(`${API_BASE}/api/ratings`),
     ])
       .then(async ([locRes, bizRes, ratingsRes]) => {
         if (!locRes.ok) throw new Error(`Server error: ${locRes.status}`);
@@ -208,7 +208,7 @@ export default function HomePage({
         setZipGeocoding(true);
         setZipError(null);
         try {
-          const res = await fetch(`/api/location-search?q=${encodeURIComponent(q + ", USA")}`);
+          const res = await fetch(`${API_BASE}/api/location-search?q=${encodeURIComponent(q + ", USA")}`);
           const data = await res.json();
           if (cancelled) return;
           if (!res.ok || !Array.isArray(data) || data.length === 0) {
@@ -227,7 +227,7 @@ export default function HomePage({
         setZipCenter(null);
         setZipError(null);
         try {
-          const res = await fetch(`/api/location-search?q=${encodeURIComponent(q)}`);
+          const res = await fetch(`${API_BASE}/api/location-search?q=${encodeURIComponent(q)}`);
           const data = await res.json();
           if (cancelled) return;
           if (res.ok && Array.isArray(data) && data.length > 0) {

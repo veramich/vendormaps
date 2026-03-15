@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import useUser from '../src/useUser';
-import { formatBusinessHours } from '../src/utils';
+import { formatBusinessHours, API_BASE } from '../src/utils';
 
 function getValidImageUrl(url: string | null | undefined): string | null {
   if (!url || url.trim() === '') return null;
@@ -132,7 +132,7 @@ export default function AdminReview() {
       
       try {
         const token = await user.getIdToken();
-        const response = await fetch('/api/admin/check-role', {
+        const response = await fetch(`${API_BASE}/api/admin/check-role`, {
           headers: {
             'authtoken': token,
             'Authorization': `Bearer ${token}`
@@ -161,7 +161,7 @@ export default function AdminReview() {
 
       try {
         const token = await user.getIdToken();
-        const response = await fetch('/api/admin/pending-businesses', {
+        const response = await fetch(`${API_BASE}/api/admin/pending-businesses`, {
           headers: {
             'authtoken': token,
             'Authorization': `Bearer ${token}`
@@ -192,7 +192,7 @@ export default function AdminReview() {
       if (!user || userRole !== 'admin') return;
       try {
         const token = await user.getIdToken();
-        const response = await fetch('/api/admin/pending-claims', {
+        const response = await fetch(`${API_BASE}/api/admin/pending-claims`, {
           headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -210,7 +210,7 @@ export default function AdminReview() {
       if (!user || userRole !== 'admin') return;
       try {
         const token = await user.getIdToken();
-        const res = await fetch('/api/admin/pending-edits', {
+        const res = await fetch(`${API_BASE}/api/admin/pending-edits`, {
           headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -227,7 +227,7 @@ export default function AdminReview() {
     if (!user) return;
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`/api/admin/businesses/${businessId}/${action}`, {
+      const res = await fetch(`${API_BASE}/api/admin/businesses/${businessId}/${action}`, {
         method: 'POST',
         headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
       });
@@ -247,7 +247,7 @@ export default function AdminReview() {
       if (!user || userRole !== 'admin') return;
       try {
         const token = await user.getIdToken();
-        const res = await fetch('/api/admin/pending-deletions', {
+        const res = await fetch(`${API_BASE}/api/admin/pending-deletions`, {
           headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -264,7 +264,7 @@ export default function AdminReview() {
     if (!user) return;
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`/api/admin/businesses/${businessId}/${action}`, {
+      const res = await fetch(`${API_BASE}/api/admin/businesses/${businessId}/${action}`, {
         method: 'POST',
         headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
       });
@@ -284,7 +284,7 @@ export default function AdminReview() {
       if (!user || userRole !== 'admin') return;
       try {
         const token = await user.getIdToken();
-        const res = await fetch('/api/admin/pending-photos', {
+        const res = await fetch(`${API_BASE}/api/admin/pending-photos`, {
           headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -301,7 +301,7 @@ export default function AdminReview() {
     if (!user) return;
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`/api/admin/photos/${photoId}/${action}`, {
+      const res = await fetch(`${API_BASE}/api/admin/photos/${photoId}/${action}`, {
         method: 'POST',
         headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
       });
@@ -320,7 +320,7 @@ export default function AdminReview() {
     if (!user) return;
     try {
       const token = await user.getIdToken();
-      const response = await fetch(`/api/admin/businesses/${businessId}/${action}`, {
+      const response = await fetch(`${API_BASE}/api/admin/businesses/${businessId}/${action}`, {
         method: 'POST',
         headers: { 'authtoken': token, 'Authorization': `Bearer ${token}` }
       });
@@ -354,9 +354,9 @@ export default function AdminReview() {
         requestBody.rejection_reason = reason.trim();
       }
 
-      const response = await fetch(`/api/admin/businesses/${businessId}/${action}`, {
+      const response = await fetch(`${API_BASE}/api/admin/businesses/${businessId}/${action}`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'authtoken': token,
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

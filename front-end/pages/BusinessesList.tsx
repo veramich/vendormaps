@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { toStringArray, normalize, isZipCode, haversineMiles, MapsChooser } from '../src/utils';
+import { toStringArray, normalize, isZipCode, haversineMiles, MapsChooser, API_BASE } from '../src/utils';
 import { DAY_OPTIONS, DAY_NAMES, RADIUS_OPTIONS } from '../src/constants';
 
 interface BusinessRow {
@@ -83,9 +83,9 @@ export default function BusinessesList() {
 				setError(null);
 
 				const [businessesResponse, locationsResponse, categoriesResponse] = await Promise.all([
-					fetch("/api/businesses"),
-					fetch("/api/locations"),
-					fetch("/api/categories"),
+					fetch(`${API_BASE}/api/businesses`),
+					fetch(`${API_BASE}/api/locations`),
+					fetch(`${API_BASE}/api/categories`),
 				]);
 
 				if (!businessesResponse.ok || !locationsResponse.ok || !categoriesResponse.ok) {
@@ -246,7 +246,7 @@ export default function BusinessesList() {
 
 		const timer = setTimeout(async () => {
 			try {
-				const res = await fetch(`/api/location-search?q=${encodeURIComponent(q + ", USA")}`);
+				const res = await fetch(`${API_BASE}/api/location-search?q=${encodeURIComponent(q + ", USA")}`);
 				const data = await res.json();
 				if (cancelled) return;
 				if (!res.ok || !Array.isArray(data) || data.length === 0) {

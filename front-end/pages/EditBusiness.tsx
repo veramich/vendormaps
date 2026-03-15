@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import useUser from "../src/useUser";
-import { capitalizeWords, normalize } from "../src/utils";
+import { capitalizeWords, normalize, API_BASE } from "../src/utils";
 import { US_STATES } from "../src/constants";
 import { HoursEditor } from "../src/components/HoursEditor";
 import type { BusinessHours } from "../src/components/HoursEditor";
@@ -77,7 +77,7 @@ export default function EditBusiness() {
   const [step, setStep] = useState(1);
 
   useEffect(() => {
-    fetch("/api/categories")
+    fetch(`${API_BASE}/api/categories`)
       .then((res) => res.json())
       .then(setCategories)
       .catch(console.error);
@@ -88,7 +88,7 @@ export default function EditBusiness() {
     const fetchData = async () => {
       try {
         const token = await user.getIdToken();
-        const res = await fetch(`/api/businesses/${id}/edit-data`, {
+        const res = await fetch(`${API_BASE}/api/businesses/${id}/edit-data`, {
           headers: { authtoken: token, Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
@@ -192,7 +192,7 @@ export default function EditBusiness() {
       const token = await user.getIdToken();
       const formData = new FormData();
       formData.append('photo', file);
-      const res = await fetch(`/api/locations/${locationId}/photos`, {
+      const res = await fetch(`${API_BASE}/api/locations/${locationId}/photos`, {
         method: 'POST',
         headers: { authtoken: token, Authorization: `Bearer ${token}` },
         body: formData,
@@ -211,7 +211,7 @@ export default function EditBusiness() {
     if (!user) return;
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`/api/locations/${locationId}/photos/${photoId}`, {
+      const res = await fetch(`${API_BASE}/api/locations/${locationId}/photos/${photoId}`, {
         method: 'DELETE',
         headers: { authtoken: token, Authorization: `Bearer ${token}` },
       });
@@ -257,7 +257,7 @@ export default function EditBusiness() {
         }
         return edit;
       });
-      const res = await fetch(`/api/businesses/${id}`, {
+      const res = await fetch(`${API_BASE}/api/businesses/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -288,7 +288,7 @@ export default function EditBusiness() {
     setError(null);
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`/api/businesses/${id}`, {
+      const res = await fetch(`${API_BASE}/api/businesses/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json", authtoken: token, Authorization: `Bearer ${token}` },
         body: JSON.stringify({ reason: deleteReason }),

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import useUser from '../src/useUser';
+import { API_BASE } from '../src/utils';
 
 interface DbProfile {
     id: string;
@@ -66,10 +67,10 @@ export default function UserProfile() {
     useEffect(() => {
         if (!user) return;
         user.getIdToken().then((token: string) => Promise.all([
-            fetch('/api/user/profile',    { headers: { authtoken: token } }).then(res => res.json()),
-            fetch('/api/user/reviews',    { headers: { authtoken: token } }).then(res => res.json()),
-            fetch('/api/user/businesses', { headers: { authtoken: token } }).then(res => res.json()),
-            fetch('/api/admin/check-role', { headers: { authtoken: token } })
+            fetch(`${API_BASE}/api/user/profile`,    { headers: { authtoken: token } }).then(res => res.json()),
+            fetch(`${API_BASE}/api/user/reviews`,    { headers: { authtoken: token } }).then(res => res.json()),
+            fetch(`${API_BASE}/api/user/businesses`, { headers: { authtoken: token } }).then(res => res.json()),
+            fetch(`${API_BASE}/api/admin/check-role`, { headers: { authtoken: token } })
                 .then(res => res.ok ? res.json() : null).catch(() => null),
         ])).then(([profileData, reviewsData, businessesData, adminData]: [
             DbProfile,
@@ -93,7 +94,7 @@ export default function UserProfile() {
         setSaving(true);
         try {
             const token = await user.getIdToken();
-            const res = await fetch('/api/user/profile', {
+            const res = await fetch(`${API_BASE}/api/user/profile`, {
                 method: 'PUT',
                 headers: { authtoken: token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, full_name: fullName, bio }),
@@ -117,7 +118,7 @@ export default function UserProfile() {
             const token = await user.getIdToken();
             const form = new FormData();
             form.append('avatar', file);
-            const res = await fetch('/api/user/avatar', {
+            const res = await fetch(`${API_BASE}/api/user/avatar`, {
                 method: 'POST',
                 headers: { authtoken: token },
                 body: form,

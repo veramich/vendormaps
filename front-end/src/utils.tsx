@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
 import L from 'leaflet';
 
+export const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
 export const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
 export function configureLeafletDefaultIcon() {
