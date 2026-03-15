@@ -3,5 +3,4 @@ node_modules/
 .env.local
 .DS_Store
 
-auth.ts
 back-end/credentials.json
