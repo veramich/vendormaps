@@ -30,7 +30,7 @@ const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'i
 // Configure multer for handling business submission form data
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit per file
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_IMAGE_MIMES.has(file.mimetype)) {
       cb(null, true);

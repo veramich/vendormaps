@@ -36,6 +36,14 @@ app.use("/api", businessesRoutes);
 
 app.get('/health', (_req, res) => res.sendStatus(200));
 
+// Handle multer file size errors with a user-friendly message
+app.use((err: Error & { code?: string }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'File is too large. Each image must be under 10MB. Please compress your photo and try again.' });
+  }
+  next(err);
+});
+
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });

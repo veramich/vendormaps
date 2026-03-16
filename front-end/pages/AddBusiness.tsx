@@ -165,9 +165,17 @@ export default function AddBusiness() {
     setForm({ ...form, websites: form.websites.filter((_, i) => i !== index) });
   };
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setForm({ ...form, logo: e.target.files[0] });
+      const file = e.target.files[0];
+      if (file.size > MAX_FILE_SIZE) {
+        setError("Logo must be under 10MB. Please compress the image and try again.");
+        e.target.value = "";
+        return;
+      }
+      setForm({ ...form, logo: file });
     }
   };
 
@@ -177,7 +185,14 @@ export default function AddBusiness() {
 
   const handleLocationImageUpload = (locationIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newImages = Array.from(e.target.files).slice(0, 3);
+      const files = Array.from(e.target.files);
+      const oversized = files.find(f => f.size > MAX_FILE_SIZE);
+      if (oversized) {
+        setError("Each image must be under 10MB. Please compress your photo and try again.");
+        e.target.value = "";
+        return;
+      }
+      const newImages = files.slice(0, 3);
       const updatedLocations = form.locations.map((location, index) =>
         index === locationIndex
           ? { ...location, images: [...location.images, ...newImages].slice(0, 3) }
