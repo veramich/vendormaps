@@ -681,9 +681,6 @@ export default function AddBusiness() {
                         maxLength={5}
                         inputMode="numeric"
                       />
-                      <small style={{ color: '#666', fontSize: '0.9em' }}>
-                        Helps find small streets more accurately
-                      </small>
                     </label>
 
                     <div className="wizard-geocode-section">
@@ -715,7 +712,9 @@ export default function AddBusiness() {
                       {loc.latitude && loc.longitude && (
                         loc.approximate ? (
                           <p className="wizard-geocode-error">
-                            Could not find that exact intersection — showing an approximate location on {loc.cross_street_1}. Double-check the street names and try again, or proceed if this looks close enough.
+                            Could not find that exact intersection — showing an approximate location on {loc.cross_street_1}. 
+                            Double-check the street names and try again, or proceed if this looks close enough. 
+                            We currently are only able to search for main streets.
                           </p>
                         ) : (
                           <p className="wizard-geocode-success">
