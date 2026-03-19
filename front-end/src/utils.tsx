@@ -41,7 +41,7 @@ export function toStringArray(value: unknown): string[] {
 }
 
 export function normalize(text: string): string {
-  return text.trim().toLowerCase();
+  return text.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 export function isZipCode(value: string): boolean {

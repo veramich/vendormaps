@@ -48,6 +48,7 @@ function createCustomIcon(color: string, icon: string) {
   });
 }
 
+
 function MapNavigator({ flyTarget }: { flyTarget: { lat: number; lng: number } | null }) {
   const map = useMap();
 
@@ -106,7 +107,7 @@ export default function HomePage({
   // Data state
   const [locations, setLocations] = useState<BusinessLocation[]>([]);
   const [businessDays, setBusinessDays] = useState<Map<string, string[]>>(new Map());
-  const [businessKeywords, setBusinessKeywords] = useState<Map<string, string[]>>(new Map());
+  const [businessDescriptions, setBusinessDescriptions] = useState<Map<string, string>>(new Map());
   const [businessAmenities, setBusinessAmenities] = useState<Map<string, string[]>>(new Map());
   const [businessRatings, setBusinessRatings] = useState<Map<string, number>>(new Map());
   const [businessHoursRaw, setBusinessHoursRaw] = useState<Map<string, unknown>>(new Map());
@@ -155,13 +156,13 @@ export default function HomePage({
         if (!bizRes.ok) throw new Error(`Server error: ${bizRes.status}`);
         const [locData, bizData] = await Promise.all([locRes.json(), bizRes.json()]);
         const daysMap = new Map<string, string[]>();
-        const keywordsMap = new Map<string, string[]>();
+        const descriptionsMap = new Map<string, string>();
         const amenitiesMap = new Map<string, string[]>();
         const ratingsMap = new Map<string, number>();
         const hoursRawMap = new Map<string, unknown>();
         for (const biz of bizData) {
           daysMap.set(biz.id, getOpenDaysFromHours(biz.business_hours));
-          keywordsMap.set(biz.id, toStringArray(biz.keywords));
+          descriptionsMap.set(biz.id, biz.description ?? "");
           amenitiesMap.set(biz.id, toStringArray(biz.amenities));
           hoursRawMap.set(biz.id, biz.business_hours ?? null);
         }
@@ -174,7 +175,7 @@ export default function HomePage({
         if (!mounted) return;
         setLocations(locData);
         setBusinessDays(daysMap);
-        setBusinessKeywords(keywordsMap);
+        setBusinessDescriptions(descriptionsMap);
         setBusinessAmenities(amenitiesMap);
         setBusinessRatings(ratingsMap);
         setBusinessHoursRaw(hoursRawMap);
@@ -231,16 +232,6 @@ export default function HomePage({
       } else {
         setZipCenter(null);
         setZipError(null);
-        try {
-          const res = await fetch(`${API_BASE}/api/location-search?q=${encodeURIComponent(q)}`);
-          const data = await res.json();
-          if (cancelled) return;
-          if (res.ok && Array.isArray(data) && data.length > 0) {
-            setFlyTarget({ lat: data[0].latitude, lng: data[0].longitude });
-          }
-        } catch {
-          // silently ignore location fly errors
-        }
       }
     }, 500);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -307,15 +298,17 @@ export default function HomePage({
             if (!normalize(String(loc.zip_code)).includes(query)) return false;
           }
         } else {
-          const keywords = businessKeywords.get(loc.business_id) ?? [];
+          const description = businessDescriptions.get(loc.business_id) ?? "";
           const amenities = businessAmenities.get(loc.business_id) ?? [];
-          const matches =
-            normalize(loc.business_name).includes(query) ||
-            normalize(loc.category_name).includes(query) ||
-            normalize(loc.city).includes(query) ||
-            normalize(loc.state).includes(query) ||
-            keywords.some((k) => normalize(k).includes(query)) ||
-            amenities.some((a) => normalize(a).includes(query));
+          const queryWords = query.split(/\s+/).filter(Boolean);
+          const matches = queryWords.some((word) =>
+            normalize(loc.business_name).includes(word) ||
+            normalize(loc.category_name).includes(word) ||
+            normalize(loc.city).includes(word) ||
+            normalize(loc.state).includes(word) ||
+            amenities.some((a) => normalize(a).includes(word)) ||
+            normalize(description).includes(word)
+          );
           if (!matches) return false;
         }
       }
@@ -347,7 +340,7 @@ export default function HomePage({
         longitude: Number(loc.longitude) + OFFSET_RADIUS * Math.sin(angle),
       };
     });
-  }, [locations, businessDays, businessKeywords, businessAmenities, businessHoursRaw, searchQuery, zipCenter, radiusMiles, selectedCategory, selectedDay, selectedAmenity, openNowFilter]);
+  }, [locations, businessDays, businessDescriptions, businessAmenities, businessHoursRaw, searchQuery, zipCenter, radiusMiles, selectedCategory, selectedDay, selectedAmenity, openNowFilter]);
 
   {/* Render logic */}
   if (loading) {
@@ -378,7 +371,7 @@ export default function HomePage({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, keywords, amenities, city, state, or zip..."
+            placeholder="Search by name, description, amenities, city, state, or zip..."
           />
           <button
             type="button"

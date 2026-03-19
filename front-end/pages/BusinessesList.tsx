@@ -10,7 +10,7 @@ interface BusinessRow {
 	photo_urls?: string[] | string | null;
 	category_name?: string | null;
 	business_hours?: Record<number, { closed: boolean; open_24_hours: boolean }> | null;
-	keywords?: string[] | string | null;
+	description?: string | null;
 	amenities?: string[] | string | null;
 }
 
@@ -42,7 +42,7 @@ interface BusinessListItem {
 	categories: string[];
 	categoryIcon: string | null;
 	daysOpen: string[];
-	keywords: string[];
+	description: string;
 	amenities: string[];
 	city: string;
 	state: string;
@@ -131,7 +131,7 @@ export default function BusinessesList() {
 						daysOpen: row.business_hours
 						? DAY_NAMES.filter((_, i) => row.business_hours![i] && !row.business_hours![i].closed)
 						: [],
-						keywords: toStringArray(row.keywords),
+						description: row.description ?? "",
 						amenities: toStringArray(row.amenities),
 						city: "",
 						state: "",
@@ -160,7 +160,7 @@ export default function BusinessesList() {
 							categories,
 							categoryIcon,
 							daysOpen: [],
-							keywords: [],
+							description: "",
 							amenities: [],
 							city: row.city?.trim() ?? "",
 							state: row.state?.trim() ?? "",
@@ -304,15 +304,17 @@ export default function BusinessesList() {
 			const normalizedName = normalize(business.name);
 			const normalizedCategories = business.categories.map(normalize);
 			const normalizedDays = business.daysOpen.map(normalize);
-			const normalizedKeywords = business.keywords.map(normalize);
 			const normalizedAmenities = business.amenities.map(normalize);
 
+			const queryWords = query.split(/\s+/).filter(Boolean);
 			const matchesSearch =
 				!query ||
-				normalizedName.includes(query) ||
-				normalizedCategories.some((item) => item.includes(query)) ||
-				normalizedKeywords.some((item) => item.includes(query)) ||
-				normalizedAmenities.some((item) => item.includes(query));
+				queryWords.some((word) =>
+					normalizedName.includes(word) ||
+					normalizedCategories.some((item) => item.includes(word)) ||
+					normalizedAmenities.some((item) => item.includes(word)) ||
+					normalize(business.description).includes(word)
+				);
 
 			let matchesLocation = true;
 			if (location) {
@@ -360,8 +362,8 @@ export default function BusinessesList() {
 					type="text"
 					value={searchQuery}
 					onChange={(event) => setSearchQuery(event.target.value)}
-					placeholder="Search by name, keywords, or amenities"
-					aria-label="Search businesses by name, keywords, or amenities"
+					placeholder="Search by name, description, or amenities"
+					aria-label="Search businesses by name, description, or amenities"
 				/>
 				<input
 					type="text"

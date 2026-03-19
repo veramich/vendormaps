@@ -14,7 +14,6 @@ interface PendingBusiness {
   description: string;
   websites: string;
   email: string;
-  keywords: string[];
   amenities: string[];
   is_chain: boolean;
   parent_company: string;
@@ -73,7 +72,6 @@ interface PendingEdit {
   current_description: string | null;
   current_websites: string[] | null;
   current_email: string | null;
-  current_keywords: string[] | null;
   current_amenities: string[] | null;
   location_edits: {
     location_id: string;
@@ -466,9 +464,6 @@ export default function AdminReview() {
                   </p>
                 )}
                 {business.parent_company && <p><strong>Parent Company:</strong> {business.parent_company}</p>}
-                {business.keywords.length > 0 && (
-                  <p className="business-keywords"><strong>Keywords:</strong> {business.keywords.join(', ')}</p>
-                )}
                 {business.amenities.length > 0 && (
                   <p><strong>Amenities:</strong> {business.amenities.join(', ')}</p>
                 )}
@@ -682,7 +677,6 @@ export default function AdminReview() {
                           description: edit.current_description,
                           websites: edit.current_websites,
                           email: edit.current_email,
-                          keywords: edit.current_keywords,
                           amenities: edit.current_amenities,
                         };
                         const current = currentMap[field];

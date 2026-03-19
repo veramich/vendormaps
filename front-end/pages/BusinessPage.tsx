@@ -45,7 +45,6 @@ interface BusinessDetails {
     email: string;
     logo_url: string | null;
     icon: string | null;
-    keywords: unknown;
     is_chain: boolean;
     parent_company: string | null;
     if_verified: boolean;
@@ -470,7 +469,6 @@ export default function BusinessPage() {
         }
     }
 
-    const keywords = useMemo(() => toStringArray(business?.keywords), [business?.keywords]);
     const allAmenities = useMemo(() => {
         const seen = new Set<string>();
         business?.locations.forEach((loc) => toStringArray(loc.amenities).forEach((a) => seen.add(a)));
@@ -752,18 +750,12 @@ export default function BusinessPage() {
             )}
 
             {/* Meta info */}
-            {(business.parent_company || keywords.length > 0 || allAmenities.length > 0) && (
+            {(business.parent_company || allAmenities.length > 0) && (
                 <div className="bp-meta">
                     {business.parent_company && (
                         <div className="bp-meta-row">
                             <span className="bp-meta-label">Parent</span>
                             <span>{business.parent_company}</span>
-                        </div>
-                    )}
-                    {keywords.length > 0 && (
-                        <div className="bp-meta-row">
-                            <span className="bp-meta-label">Tags</span>
-                            <span className="bp-keywords">{keywords.join(' · ')}</span>
                         </div>
                     )}
                     {allAmenities.length > 0 && (

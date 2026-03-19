@@ -38,7 +38,6 @@ interface EditForm {
   description: string;
   websites: string[];
   email: string;
-  keywords: string[];
   amenities: string[];
   locations: EditLocation[];
 }
@@ -64,7 +63,6 @@ export default function EditBusiness() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [keywordInput, setKeywordInput] = useState("");
   const [websiteInput, setWebsiteInput] = useState("");
   const [locationPhotos, setLocationPhotos] = useState<Record<string, LocationPhoto[]>>({});
   const [photoUploading, setPhotoUploading] = useState<Record<string, boolean>>({});
@@ -105,7 +103,6 @@ export default function EditBusiness() {
           description: data.description || "",
           websites: Array.isArray(data.websites) ? data.websites : [],
           email: data.email || "",
-          keywords: Array.isArray(data.keywords) ? data.keywords : [],
           amenities: Array.isArray(data.amenities) ? data.amenities : [],
           locations: (data.locations || []).map((loc: any) => ({
             location_id: loc.location_id,
@@ -141,20 +138,6 @@ export default function EditBusiness() {
     const locations = [...form.locations];
     locations[index] = loc;
     setForm({ ...form, locations });
-  };
-
-  const addKeyword = () => {
-    if (!form) return;
-    const trimmed = normalize(keywordInput);
-    if (trimmed && !form.keywords.includes(trimmed) && form.keywords.length < 10) {
-      setForm({ ...form, keywords: [...form.keywords, trimmed] });
-      setKeywordInput("");
-    }
-  };
-
-  const removeKeyword = (kw: string) => {
-    if (!form) return;
-    setForm({ ...form, keywords: form.keywords.filter((k) => k !== kw) });
   };
 
   const addAmenity = (amenity: string) => {
@@ -238,7 +221,6 @@ export default function EditBusiness() {
         description: form.description,
         websites: form.websites,
         email: form.email,
-        keywords: form.keywords,
         amenities: form.amenities,
       };
       const locationEdits = form.locations.map(loc => {
@@ -613,31 +595,7 @@ export default function EditBusiness() {
 
           {step === 4 && (
             <>
-              {/* ── Step 4: Keywords, Amenities, Photos ── */}
-              <fieldset>
-                <legend>Keywords (up to 10)</legend>
-                <label>
-                  Add keyword
-                  <input
-                    type="text"
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
-                    placeholder="e.g. coffee, breakfast, wifi"
-                  />
-                  <button type="button" onClick={addKeyword} disabled={form.keywords.length >= 10}>
-                    Add Keyword
-                  </button>
-                </label>
-                <div>
-                  {form.keywords.map((kw) => (
-                    <span key={kw}>
-                      {kw} <button type="button" onClick={() => removeKeyword(kw)}>×</button>
-                    </span>
-                  ))}
-                </div>
-              </fieldset>
-
+              {/* ── Step 4: Amenities, Photos ── */}
               <fieldset>
                 <legend>Amenities (up to 20)</legend>
                 <p><small>Select all that apply.</small></p>

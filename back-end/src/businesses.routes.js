@@ -173,8 +173,8 @@ router.get("/businesses", async (req, res) => {
       SELECT
         b.id,
         b.name,
+        b.description,
         b.logo_url,
-        b.keywords,
         b.amenities,
         c.name AS category_name,
         COALESCE(
@@ -198,7 +198,7 @@ router.get("/businesses", async (req, res) => {
         AND lp.moderation_status = 'approved'
       WHERE b.is_active = true
         AND b.moderation_status = 'approved'
-      GROUP BY b.id, b.name, b.logo_url, b.keywords, b.amenities, c.name
+      GROUP BY b.id, b.name, b.description, b.logo_url, b.amenities, c.name
       ORDER BY b.name
     `);
     res.json(result.rows);
@@ -221,7 +221,6 @@ router.get("/locations/:id", async (req, res) => {
           b.websites,
           b.email,
           b.logo_url,
-          b.keywords,
           b.amenities,
           b.is_chain,
           b.parent_company,
@@ -303,7 +302,6 @@ router.get("/locations/:id", async (req, res) => {
       email: row.email,
       logo_url: row.logo_url,
       icon: row.category_icon,
-      keywords: row.keywords,
       is_chain: row.is_chain,
       parent_company: row.parent_company,
       if_verified: row.if_verified,
@@ -365,7 +363,6 @@ router.get('/businesses/:id', async (req, res) => {
           b.email,
           b.logo_url,
           c.icon,
-          b.keywords,
           b.amenities,
           b.is_chain,
           b.parent_company,
@@ -540,7 +537,6 @@ router.post('/businesses', writeLimiter, ...requireAuth, upload.fields([
       description,
       websites,
       email,
-      keywords,
       amenities,
       is_chain,
       is_owner,
@@ -602,9 +598,9 @@ router.post('/businesses', writeLimiter, ...requireAuth, upload.fields([
     try {
       const businessResult = await pool.query(`
         INSERT INTO vendormap.businesses (
-          name, category_id, description, websites, email, keywords, 
+          name, category_id, description, websites, email,
           amenities, is_chain, logo_url, moderation_status, created_by, if_verified
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, $11)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
         RETURNING id
       `, [
         name.trim(),
@@ -612,7 +608,6 @@ router.post('/businesses', writeLimiter, ...requireAuth, upload.fields([
         description?.trim() || null,
         websites || [],
         email?.trim() || null,
-        keywords || [],
         amenities || [],
         is_chain || false,
         logoUrl,
@@ -722,7 +717,6 @@ router.get('/admin/pending-businesses', ...requireAuth, requireAdmin, async (req
           b.description,
           b.websites,
           b.email,
-          b.keywords,
           b.amenities,
           b.is_chain,
           b.if_verified,
@@ -817,7 +811,6 @@ router.get('/admin/pending-businesses', ...requireAuth, requireAdmin, async (req
     try {
       const businessesWithLocations = pendingResult.rows.map(business => ({
         ...business,
-        keywords: Array.isArray(business.keywords) ? business.keywords : [],
         amenities: Array.isArray(business.amenities) ? business.amenities : [],
         parent_company: business.parent_company ?? null,
         terms_accepted: business.terms_accepted ?? false,
@@ -1008,7 +1001,7 @@ router.get('/businesses/:id/edit-data', ...requireAuth, async (req, res) => {
     const dbUserId = req.auth.dbUser.id;
 
     const bizResult = await pool.query(
-      `SELECT id, name, category_id, description, websites, email, keywords, amenities,
+      `SELECT id, name, category_id, description, websites, email, amenities,
               is_chain, logo_url, verified_owner_id, moderation_status
        FROM vendormap.businesses
        WHERE id = $1 AND moderation_status = 'approved' AND is_active = true`,
@@ -1141,7 +1134,7 @@ router.get('/admin/pending-edits', ...requireAuth, requireAdmin, async (req, res
         b.id, b.name AS business_name, b.pending_edits AS business_edits,
         b.name AS current_name, b.description AS current_description,
         b.websites AS current_websites, b.email AS current_email,
-        b.keywords AS current_keywords, b.amenities AS current_amenities,
+        b.amenities AS current_amenities,
         COALESCE(json_agg(
           json_build_object(
             'location_id', l.id,
@@ -1161,7 +1154,7 @@ router.get('/admin/pending-edits', ...requireAuth, requireAdmin, async (req, res
       LEFT JOIN vendormap.business_locations l
         ON l.business_id = b.id AND l.edit_pending = true
       WHERE b.edit_pending = true
-      GROUP BY b.id, b.name, b.pending_edits, b.description, b.websites, b.email, b.keywords, b.amenities
+      GROUP BY b.id, b.name, b.pending_edits, b.description, b.websites, b.email, b.amenities
       ORDER BY b.updated_at ASC
     `);
     res.json(result.rows);
@@ -1187,7 +1180,7 @@ router.post('/admin/businesses/:id/approve-edit', ...requireAuth, requireAdmin, 
       }
 
       const pendingEdits = bizResult.rows[0].pending_edits || {};
-      const allowedBizFields = ['name', 'category_id', 'description', 'websites', 'email', 'keywords', 'amenities', 'is_chain'];
+      const allowedBizFields = ['name', 'category_id', 'description', 'websites', 'email', 'amenities', 'is_chain'];
       const bizEntries = Object.entries(pendingEdits).filter(([k]) => allowedBizFields.includes(k));
       if (bizEntries.length > 0) {
         const setClause = bizEntries.map(([k], i) => `${k} = $${i + 2}`).join(', ');

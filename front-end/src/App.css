@@ -195,8 +195,6 @@
   font-size: 13px;
   padding: 6px 10px;
   border-radius: 15px; 
-  -moz-border-radius: 15px; 
-  -webkit-border-radius: 15px; 
 }
 
 .search-container button {
@@ -464,8 +462,6 @@
   font-size: 13px;
   padding: 6px 10px;
   border-radius: 15px; 
-  -moz-border-radius: 15px; 
-  -webkit-border-radius: 15px; 
 }
 
 .search-container button {
@@ -669,8 +665,6 @@ input[type="search"] {
   font-size: 13px;
   padding: 6px 10px;
   border-radius: 15px;
-  -moz-border-radius: 15px;
-  -webkit-border-radius: 15px;
   border: 1px solid #ffffff;
   margin: 4px 0;
 }
@@ -1143,11 +1137,6 @@ input[type="search"] {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.bp-keywords {
-  color: #94a3b8;
-  font-size: 13px;
 }
 
 .bp-empty {

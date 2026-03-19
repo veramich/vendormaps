@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import useUser from "../src/useUser";
-import { generateUUID, capitalizeWords, configureLeafletDefaultIcon, normalize, API_BASE } from "../src/utils";
+import { generateUUID, capitalizeWords, configureLeafletDefaultIcon, API_BASE } from "../src/utils";
 import { US_STATES } from "../src/constants";
 import { HoursEditor } from "../src/components/HoursEditor";
 import type { BusinessHours } from "../src/components/HoursEditor";
@@ -65,7 +65,6 @@ interface BusinessFormData {
   description: string;
   websites: string[];
   email: string;
-  keywords: string[];
   amenities: string[];
   is_chain: boolean;
   is_owner: boolean;
@@ -103,14 +102,12 @@ export default function AddBusiness() {
     description: "",
     websites: [],
     email: "",
-    keywords: [],
     amenities: [],
     is_chain: false,
     is_owner: false,
     locations: [DEFAULT_LOCATION()],
     logo: null,
   });
-  const [keywordInput, setKeywordInput] = useState("");
   const [websiteInput, setWebsiteInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
@@ -128,18 +125,6 @@ export default function AddBusiness() {
       .then(setCategories)
       .catch(console.error);
   }, []);
-
-  const addKeyword = () => {
-    const trimmed = normalize(keywordInput);
-    if (trimmed && !form.keywords.includes(trimmed) && form.keywords.length < 10) {
-      setForm({ ...form, keywords: [...form.keywords, trimmed] });
-      setKeywordInput("");
-    }
-  };
-
-  const removeKeyword = (kw: string) => {
-    setForm({ ...form, keywords: form.keywords.filter((k) => k !== kw) });
-  };
 
   const addAmenity = (amenity: string) => {
     if (amenity && !form.amenities.includes(amenity) && form.amenities.length < 20) {
@@ -764,7 +749,7 @@ export default function AddBusiness() {
 
           {step === 4 && (
             <>
-              {/* Step 4: Amenities, Keywords, Photos */}
+              {/* Step 4: Amenities, Photos */}
               <fieldset>
                 <legend>Amenities (up to 20)</legend>
                 <p><small>Select all that apply. The more you select, the higher chance of attracting customers.</small></p>
@@ -774,30 +759,6 @@ export default function AddBusiness() {
                   onRemove={removeAmenity}
                   maxCount={20}
                 />
-              </fieldset>
-
-              <fieldset>
-                <legend>Keywords (up to 10)</legend>
-                <label>
-                  Add keywords. This is what people will search for, so include menu items, services, vibe, etc.
-                  <input
-                    type="text"
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
-                    placeholder="e.g. coffee, breakfast, wifi"
-                  />
-                  <button type="button" onClick={addKeyword} disabled={form.keywords.length >= 10}>
-                    Add Keyword
-                  </button>
-                </label>
-                <div>
-                  {form.keywords.map((kw) => (
-                    <span key={kw}>
-                      {kw} <button type="button" onClick={() => removeKeyword(kw)}>×</button>
-                    </span>
-                  ))}
-                </div>
               </fieldset>
 
               {form.locations.map((loc, locationIndex) => (
