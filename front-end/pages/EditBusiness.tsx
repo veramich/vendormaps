@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import useUser from "../src/useUser";
-import { capitalizeWords, normalize, API_BASE } from "../src/utils";
+import { capitalizeWords, API_BASE } from "../src/utils";
 import { US_STATES } from "../src/constants";
 import { HoursEditor } from "../src/components/HoursEditor";
 import type { BusinessHours } from "../src/components/HoursEditor";
