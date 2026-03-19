@@ -464,7 +464,7 @@ export default function AdminReview() {
                   </p>
                 )}
                 {business.parent_company && <p><strong>Parent Company:</strong> {business.parent_company}</p>}
-                {business.amenities.length > 0 && (
+                {business.amenities?.length > 0 && (
                   <p><strong>Amenities:</strong> {business.amenities.join(', ')}</p>
                 )}
 
