@@ -1,14 +1,41 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {Link} from 'react-router-dom';
 
 export default function LandingPage() {
+  const [showPreviewBanner, setShowPreviewBanner] = useState(false);
+
   useEffect(() => {
     fetch('https://vendormaps.onrender.com/health')
       .catch(() => {});
+    if (!localStorage.getItem('preview-dismissed')) {
+      setShowPreviewBanner(true);
+    }
   }, []);
 
+  function dismissPreview() {
+    localStorage.setItem('preview-dismissed', '1');
+    setShowPreviewBanner(false);
+  }
+
   return (
-    <div className="landing-page"> 
+    <div className="landing-page">
+      {showPreviewBanner && (
+        <div className="preview-overlay" onClick={dismissPreview}>
+          <div className="preview-popup" onClick={e => e.stopPropagation()}>
+            <div className="preview-popup-emoji">🚧</div>
+            <h2 className="preview-popup-title">You're catching us early!</h2>
+            <p className="preview-popup-body">
+              Vendor Maps is still a work in progress — things might be a little rough around the edges right now, but we're building something awesome.
+            </p>
+            <p className="preview-popup-body">
+              Expect new features, better search, and more vendors rolling in soon. Thanks for being here from the start!
+            </p>
+            <button className="preview-popup-btn" onClick={dismissPreview}>
+              Got it, let's explore!
+            </button>
+          </div>
+        </div>
+      )}
       <div className="landing-hero">
         <h1>Welcome to Vendor Maps</h1>
         <p>FIND LOCAL VENDORS</p>

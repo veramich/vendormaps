@@ -2534,6 +2534,89 @@ input[type="search"] {
   min-width: 0;
 }
 
+/* ── Early Preview Popup ── */
+.preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.preview-popup {
+  background: #1e1e1e;
+  border: 1px solid #ff7300;
+  border-radius: 16px;
+  padding: 32px 28px 28px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 8px 40px rgba(255, 115, 0, 0.2);
+  animation: preview-pop 0.25s ease;
+}
+
+@keyframes preview-pop {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+@media (prefers-color-scheme: light) {
+  .preview-popup {
+    background: #ffffff;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+  }
+}
+
+.preview-popup-emoji {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+}
+
+.preview-popup-title {
+  color: #ff7300;
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.preview-popup-body {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #fdfdfd;
+  margin: 0 0 12px;
+}
+
+@media (prefers-color-scheme: light) {
+  .preview-popup-body {
+    color: #fdfdfd;
+  }
+}
+
+.preview-popup-btn {
+  margin-top: 8px;
+  width: 100%;
+  background: #ff7300;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+@media (hover: hover) {
+  .preview-popup-btn:hover {
+    background: #e06400;
+  }
+}
+
 /* ── Landing Page ── */
 .landing-page {
   display: flex;
