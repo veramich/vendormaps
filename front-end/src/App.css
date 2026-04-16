@@ -2585,15 +2585,15 @@ input[type="search"] {
 }
 
 .preview-popup-body {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.6;
-  color: #fdfdfd;
+  color: #e0e0e0;
   margin: 0 0 12px;
 }
 
 @media (prefers-color-scheme: light) {
   .preview-popup-body {
-    color: #fdfdfd;
+    color: #4b5563;
   }
 }
 
